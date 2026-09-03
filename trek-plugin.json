@@ -1,0 +1,113 @@
+{
+  "id": "sundial",
+  "name": "Sundial",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "author": "jubnl",
+  "description": "Sunrise, sunset, golden hour and blue hour for every day of your trip, computed from where you will actually be.",
+  "homepage": "https://github.com/jubnl/trek-plugin-sundial",
+  "license": "MIT",
+  "type": "trip-page",
+  "trek": ">=4.0.0 <5.0.0",
+  "nativeModules": false,
+  "icon": "Sunrise",
+  "permissions": [
+    "db:own",
+    "db:read:trips",
+    "db:meta",
+    "ws:broadcast:trip",
+    "weather:read",
+    "events:subscribe",
+    "hook:day-schedule-provider",
+    "hook:day-tint-provider",
+    "hook:place-detail-provider",
+    "hook:trip-warning-provider",
+    "hook:pdf-section-provider",
+    "hook:trip-card-provider",
+    "hook:user-data",
+    "mcp:tools"
+  ],
+  "requiredAddons": [],
+  "pluginDependencies": [],
+  "settings": [
+    {
+      "key": "golden_altitude",
+      "label": "Golden hour ends at sun altitude",
+      "input_type": "select",
+      "scope": "user",
+      "default": "6",
+      "options": [
+        { "value": "4", "label": "4 degrees (strict)" },
+        { "value": "6", "label": "6 degrees (classic)" },
+        { "value": "8", "label": "8 degrees" },
+        { "value": "10", "label": "10 degrees (generous)" }
+      ],
+      "hint": "Golden hour always starts 4 degrees below the horizon; this sets how high the sun may climb before the light is no longer golden."
+    },
+    {
+      "key": "clock",
+      "label": "Clock",
+      "input_type": "select",
+      "scope": "user",
+      "default": "24h",
+      "options": [
+        { "value": "24h", "label": "24-hour" },
+        { "value": "12h", "label": "12-hour" }
+      ],
+      "hint": "How Sundial writes times in the trip tab, the planner rows, the place panel, the PDF and its assistant tools."
+    }
+  ],
+  "capabilities": {
+    "mcpTools": [
+      {
+        "name": "sun_times",
+        "title": "Sun times",
+        "description": "Sunrise, sunset, golden hour and blue hour. Pass tripId (and optionally dayId) for a trip's days, computed from where the traveller will be; or pass date, lat and lng (and optionally an IANA zone) for any place on any date.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "tripId": { "type": "integer", "minimum": 1, "description": "A trip the requesting user can access." },
+            "dayId": { "type": "integer", "minimum": 1, "description": "One day of that trip; omit for every day." },
+            "date": { "type": "string", "format": "date", "description": "YYYY-MM-DD, used with lat and lng. Defaults to today." },
+            "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+            "lng": { "type": "number", "minimum": -180, "maximum": 180 },
+            "zone": { "type": "string", "maxLength": 64, "description": "IANA time zone for the answer, e.g. Asia/Tokyo. Estimated from longitude when omitted." }
+          },
+          "additionalProperties": false
+        },
+        "annotations": { "readOnlyHint": true, "idempotentHint": true, "destructiveHint": false, "openWorldHint": false }
+      },
+      {
+        "name": "list_shoot_days",
+        "title": "List shoot days",
+        "description": "The days of a trip marked for photography, with their sun times and notes.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "tripId": { "type": "integer", "minimum": 1 }
+          },
+          "required": ["tripId"],
+          "additionalProperties": false
+        },
+        "annotations": { "readOnlyHint": true, "idempotentHint": true, "destructiveHint": false, "openWorldHint": false }
+      },
+      {
+        "name": "mark_shoot_day",
+        "title": "Mark a shoot day",
+        "description": "Mark or unmark a day of a trip as a photography shoot day, with an optional note. Shared with every member of the trip.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "tripId": { "type": "integer", "minimum": 1 },
+            "dayId": { "type": "integer", "minimum": 1 },
+            "on": { "type": "boolean", "description": "true to mark, false to clear." },
+            "note": { "type": "string", "maxLength": 200 }
+          },
+          "required": ["tripId", "dayId", "on"],
+          "additionalProperties": false
+        },
+        "annotations": { "readOnlyHint": false, "idempotentHint": true, "destructiveHint": false, "openWorldHint": false }
+      }
+    ]
+  }
+}

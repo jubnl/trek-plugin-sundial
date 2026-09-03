@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sundial</title>
+  <!-- trek:ui -->
+  <style>
+    /* In TREK a trip-page frame fills its tab (the kit marks the root with data-fill):
+       the root then fills the frame and the day list scrolls inside it. Anywhere the
+       host reports height instead (dev's /preview, a reporting surface), the document
+       flows naturally so the kit can report its real height. */
+    body { margin: 0; }
+    #content { padding: 0 20px 24px; }
+    html[data-fill], html[data-fill] body { height: 100%; }
+    html[data-fill] #app { height: 100%; display: flex; flex-direction: column; }
+    html[data-fill] #content { flex: 1; overflow: auto; }
+    svg { flex-shrink: 0; }
+
+    /* Sundial's own palette: the light itself, identical in both themes. */
+    :root {
+      --sd-night: #0b1020; --sd-astro: #182038; --sd-nautical: #26375f;
+      --sd-blue: #3b82f6; --sd-gold: #f59e0b; --sd-day: #fde68a; --sd-day-2: #fff7d6;
+      --sd-mark: #fff;
+    }
+    [data-theme="dark"] { --sd-day: #fcd34d; --sd-day-2: #fde68a; }
+
+    /* Header ---------------------------------------------------------------- */
+    #head { padding: 18px 20px 12px; display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    #head .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    #head .brand .mark { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+      background: color-mix(in oklch, var(--sd-gold) 18%, transparent); color: var(--sd-gold); }
+    #head .brand .mark svg { width: 22px; height: 22px; }
+    #head h1 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.2; }
+    #head .sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    #head .sp { flex: 1; }
+    #zonebox { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    #zonebox .trek-select-wrap, #zonebox select { width: 260px; }
+    #zonebox .est { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+    /* Summary tiles ----------------------------------------------------------- */
+    #summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 6px 0 14px; }
+    .tile { padding: 10px 14px; }
+    .tile .v { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; margin-top: 2px; }
+    .tile .v small { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: 6px; }
+    .tile.gold .v { color: var(--sd-gold); }
+
+    /* Legend + axis ----------------------------------------------------------- */
+    #legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); margin: 0 0 8px; align-items: center; }
+    #legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border-primary); vertical-align: -2px; margin-right: 5px; }
+    #legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--sd-mark); border: 2px solid var(--sd-night); vertical-align: -1px; margin-right: 5px; }
+
+    /* Day rows ---------------------------------------------------------------- */
+    .grid { display: grid; grid-template-columns: 210px minmax(240px, 1fr) 250px 40px; gap: 0 16px; align-items: center; }
+    .axis { padding: 0 16px 4px; color: var(--text-faint); font-size: 10px; font-variant-numeric: tabular-nums; }
+    .axis .ticks { position: relative; height: 12px; }
+    .axis .ticks span { position: absolute; transform: translateX(-50%); }
+    .day { padding: 10px 16px; margin-bottom: 8px; border-left: 3px solid transparent; }
+    .day.shoot { border-left-color: var(--sd-gold); background: color-mix(in oklch, var(--sd-gold) 6%, var(--bg-card)); }
+    .day .who { min-width: 0; }
+    .day .who .n { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+    .day .who .n b { font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .day .who .n .d { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .day .who .where { font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    .day .who .where .src { color: var(--text-faint); }
+    .day .who .sky { font-size: 11px; color: var(--text-muted); margin-top: 2px; display: flex; gap: 8px; align-items: center; }
+    .day .who .sky svg { width: 12px; height: 12px; }
+    .barwrap { position: relative; }
+    .bar { width: 100%; height: 30px; display: block; }
+    .bar .seg { shape-rendering: crispEdges; }
+    .stopdot { position: absolute; top: 50%; width: 13px; height: 13px; border-radius: 50%; transform: translate(-50%, -50%);
+      border: 2.5px solid var(--sd-night); box-shadow: 0 0 0 1.5px rgba(255,255,255,.55); cursor: help; }
+    .stopdot.l-golden { background: var(--sd-gold); } .stopdot.l-blue { background: var(--sd-blue); }
+    .stopdot.l-day { background: #fff; } .stopdot.l-dark { background: #94a3b8; }
+    .day .times { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-secondary); display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; align-items: center; }
+    .day .times .k { color: var(--text-faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; }
+    .day .times .gold { color: var(--sd-gold); font-weight: 600; }
+    .day .times .len { color: var(--text-muted); }
+    .day .empty { font-size: 12px; color: var(--text-muted); grid-column: 2 / 4; }
+    .day .empty b { color: var(--text-secondary); font-weight: 500; }
+    .shoot-btn { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; border: 1px solid var(--border-primary); background: var(--bg-card); color: var(--text-muted); cursor: pointer; transition: transform .08s var(--trek-ease-quint), background .15s, color .15s, border-color .15s; }
+    .shoot-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .shoot-btn:active { transform: scale(.94); }
+    .shoot-btn svg { width: 16px; height: 16px; }
+    .shoot-btn.on { background: var(--sd-gold); border-color: var(--sd-gold); color: #1c1917; }
+    .note { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .note .trek-input { max-width: 520px; font-size: 12px; padding: 6px 10px; }
+    .note .tag { font-size: 11px; font-weight: 600; color: var(--sd-gold); text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
+
+    /* States ------------------------------------------------------------------ */
+    .skeleton .day { height: 66px; }
+    .msg { padding: 32px 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
+    .msg b { display: block; color: var(--text-primary); font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+
+    @media (max-width: 760px) {
+      .grid { grid-template-columns: 1fr 40px; }
+      .axis > :first-child, .axis > :last-child { display: none; }
+      .axis .ticks { grid-column: 1 / -1; }
+      .axis .ticks span:nth-child(even) { display: none; }
+      .day .who { grid-column: 1; grid-row: 1; }
+      .day .shoot-btn { grid-column: 2; grid-row: 1; align-self: start; }
+      .day .barwrap, .day .empty { grid-column: 1 / -1; grid-row: 2; margin-top: 8px; }
+      .day .times { grid-column: 1 / -1; grid-row: 3; grid-template-columns: auto 1fr auto 1fr; margin-top: 6px; }
+      .day .note { grid-row: 4; }
+      #zonebox .trek-select-wrap, #zonebox select { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header id="head">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="m4.93 10.93 1.41 1.41"/><path d="M2 18h2"/><path d="M20 18h2"/><path d="m19.07 10.93-1.41 1.41"/><path d="M22 22H2"/><path d="m8 6 4-4 4 4"/><path d="M16 18a4 4 0 0 0-8 0"/></svg>
+      </div>
+      <div>
+        <h1 id="title">Sundial</h1>
+        <div class="sub" id="subtitle">Sunrise, golden hour and blue hour, wherever each day takes you.</div>
+      </div>
+    </div>
+    <div class="sp"></div>
+    <div id="zonebox" hidden>
+      <label class="trek-label" for="zone" style="margin:0">Time zone</label>
+      <select id="zone" class="trek-select"></select>
+      <span class="est" id="zone-est"></span>
+    </div>
+  </header>
+  <div id="content" class="trek-scroll">
+    <div id="summary"></div>
+    <div id="legend"></div>
+    <div id="days" class="skeleton"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var state = { tripId: null, locale: 'en', model: null, loading: false, zones: null };
+  var $ = function (id) { return document.getElementById(id); };
+  var W = 1440; // the bar is scaled in minutes of the local day
+
+  // ─── icons (lucide paths, sized by CSS) ───────────────────────────────────
+  var ICON = {
+    sunrise: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"/><path d="m4.93 10.93 1.41 1.41"/><path d="M2 18h2"/><path d="M20 18h2"/><path d="m19.07 10.93-1.41 1.41"/><path d="M22 22H2"/><path d="m8 6 4-4 4 4"/><path d="M16 18a4 4 0 0 0-8 0"/></svg>',
+    sunset: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10V2"/><path d="m4.93 10.93 1.41 1.41"/><path d="M2 18h2"/><path d="M20 18h2"/><path d="m19.07 10.93-1.41 1.41"/><path d="M22 22H2"/><path d="m16 6-4 4-4-4"/><path d="M16 18a4 4 0 0 0-8 0"/></svg>',
+    camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>',
+    cloud: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>',
+    sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
+    rain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>'
+  };
+
+  function el(tag, attrs, children) {
+    var n = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === 'class') n.className = attrs[k];
+      else if (k === 'text') n.textContent = attrs[k];
+      else if (k === 'html') n.innerHTML = attrs[k];
+      else if (k.slice(0, 3) === 'on:') n.addEventListener(k.slice(3), attrs[k]);
+      else if (attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]);
+    }
+    (children || []).forEach(function (c) { if (c) n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return n;
+  }
+  function svg(tag, attrs) {
+    var n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+  function icon(name) { var s = el('span', { html: ICON[name] }); return s.firstChild; }
+
+  // ─── data ─────────────────────────────────────────────────────────────────
+  function load() {
+    if (!state.tripId || state.loading) return;
+    state.loading = true;
+    trek.invoke('/trip?tripId=' + encodeURIComponent(state.tripId)).then(function (m) {
+      state.model = m; state.loading = false; render();
+    }).catch(function (e) {
+      state.loading = false;
+      $('days').className = '';
+      $('days').innerHTML = '';
+      $('days').appendChild(el('div', { class: 'msg' }, [el('b', { text: 'Could not load this trip' }), e && e.message ? e.message : 'unknown error']));
+    });
+  }
+  var reloadTimer = null;
+  function reloadSoon() { clearTimeout(reloadTimer); reloadTimer = setTimeout(load, 300); }
+
+  function post(sub, body) {
+    return trek.invoke(sub, { method: 'POST', body: body }).catch(function (e) { trek.notify('error', (e && e.message) || 'request failed'); throw e; });
+  }
+
+  // ─── formatting ───────────────────────────────────────────────────────────
+  function fmtDate(iso) {
+    if (!iso) return '';
+    try {
+      var p = iso.split('-').map(Number);
+      return new Intl.DateTimeFormat(state.locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(p[0], p[1] - 1, p[2])));
+    } catch (e) { return iso; }
+  }
+  function offsetLabel(min) {
+    if (min === null || min === undefined) return '';
+    var sign = min < 0 ? '-' : '+', a = Math.abs(min), h = Math.floor(a / 60), m = a % 60;
+    return 'UTC' + sign + h + (m ? ':' + (m < 10 ? '0' : '') + m : '');
+  }
+  var SRC = { stop: 'first stop', stay: 'staying', carry: 'carried from the day before', next: 'from the next day', pool: 'from the place pool' };
+
+  // ─── zones ────────────────────────────────────────────────────────────────
+  function zoneList() {
+    if (state.zones) return state.zones;
+    var list = [];
+    try { list = Intl.supportedValuesOf('timeZone'); } catch (e) { /* older engine */ }
+    if (!list.length) list = ['UTC', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Madrid', 'Europe/Rome', 'Europe/Zurich', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Sao_Paulo', 'Asia/Tokyo', 'Asia/Seoul', 'Asia/Shanghai', 'Asia/Singapore', 'Asia/Bangkok', 'Asia/Kolkata', 'Asia/Dubai', 'Australia/Sydney', 'Pacific/Auckland', 'Pacific/Honolulu', 'Africa/Cairo', 'Africa/Johannesburg'];
+    state.zones = list;
+    return list;
+  }
+  var zoneBuilt = false;
+  function buildZoneSelect(m) {
+    var sel = $('zone');
+    if (!zoneBuilt) {
+      sel.appendChild(el('option', { value: '', text: 'Automatic (by longitude)' }));
+      zoneList().forEach(function (z) { sel.appendChild(el('option', { value: z, text: z })); });
+      sel.addEventListener('change', function () {
+        post('/zone', { tripId: state.tripId, zone: sel.value }).then(function () {
+          trek.notify('success', sel.value ? 'Time zone pinned to ' + sel.value : 'Time zone back to automatic');
+          load();
+        }).catch(function () { load(); });
+      });
+      zoneBuilt = true;
+    }
+    if (m.zone.name && !zoneList().includes(m.zone.name)) sel.appendChild(el('option', { value: m.zone.name, text: m.zone.name }));
+    sel.value = m.zone.name || '';
+    // The kit's listbox mirrors the native select only when the user picks from its
+    // menu; a programmatic value needs the trigger label refreshed by hand.
+    var trig = sel.parentNode && sel.parentNode.querySelector('.trek-select-value');
+    if (trig) trig.textContent = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+    var first = m.days.find(function (d) { return d.sun; });
+    $('zone-est').textContent = m.zone.name
+      ? offsetLabel(first ? first.sun.offsetMinutes : null)
+      : (first ? 'estimated ' + first.zone + ' (' + offsetLabel(first.sun.offsetMinutes) + ')' : '');
+    $('zonebox').hidden = false;
+  }
+
+  // ─── render ───────────────────────────────────────────────────────────────
+  function render() {
+    var m = state.model;
+    $('title').textContent = m.trip.title ? m.trip.title : 'Sundial';
+    $('subtitle').textContent = m.trip.title
+      ? 'Sun times for ' + m.summary.computed + ' of ' + m.summary.total + ' days, golden hour to ' + m.settings.goldenAltitude + '° above the horizon'
+      : 'Sunrise, golden hour and blue hour, wherever each day takes you.';
+    buildZoneSelect(m);
+    renderSummary(m);
+    renderLegend();
+    var days = $('days');
+    days.className = '';
+    days.innerHTML = '';
+    if (!m.days.length) {
+      days.appendChild(el('div', { class: 'msg' }, [el('b', { text: 'No days yet' }), 'Give the trip dates and Sundial will plot every day.']));
+      return;
+    }
+    days.appendChild(renderAxis());
+    m.days.forEach(function (d) { days.appendChild(renderDay(d, m)); });
+  }
+
+  function tile(label, value, extra, gold) {
+    return el('div', { class: 'trek-card tile' + (gold ? ' gold' : '') }, [
+      el('div', { class: 'trek-title', text: label }),
+      el('div', { class: 'v', html: value + (extra ? '<small>' + extra + '</small>' : '') })
+    ]);
+  }
+  function renderSummary(m) {
+    var s = m.summary, box = $('summary');
+    box.innerHTML = '';
+    box.appendChild(tile('Earliest sunrise', s.earliestSunrise ? s.earliestSunrise.time : '—', s.earliestSunrise ? 'day ' + s.earliestSunrise.day : ''));
+    box.appendChild(tile('Latest sunset', s.latestSunset ? s.latestSunset.time : '—', s.latestSunset ? 'day ' + s.latestSunset.day : ''));
+    box.appendChild(tile('Longest day', s.longestDay ? s.longestDay.length : '—', s.longestDay ? 'day ' + s.longestDay.day : ''));
+    box.appendChild(tile('Shoot days', String(s.shootDays), s.polarDays ? s.polarDays + ' midnight sun' : (s.polarNights ? s.polarNights + ' polar night' : ''), s.shootDays > 0));
+  }
+  function renderLegend() {
+    var L = $('legend');
+    if (L.childNodes.length) return;
+    [['var(--sd-night)', 'Night'], ['var(--sd-nautical)', 'Twilight'], ['var(--sd-blue)', 'Blue hour'], ['var(--sd-gold)', 'Golden hour'], ['var(--sd-day)', 'Daylight']].forEach(function (p) {
+      L.appendChild(el('span', {}, [el('i', { class: 'sw', style: 'background:' + p[0] }), p[1]]));
+    });
+    L.appendChild(el('span', {}, [el('i', { class: 'dot' }), 'A stop with a start time']));
+  }
+  function renderAxis() {
+    var ticks = el('div', { class: 'ticks' });
+    [0, 3, 6, 9, 12, 15, 18, 21, 24].forEach(function (h) {
+      var shift = h === 0 ? '0' : h === 24 ? '-100%' : '-50%';
+      ticks.appendChild(el('span', { style: 'left:' + (h / 24 * 100) + '%; transform: translateX(' + shift + ')', text: (h < 10 ? '0' : '') + h + ':00' }));
+    });
+    return el('div', { class: 'grid axis' }, [el('div', { class: 'trek-faint', text: 'local time' }), ticks, el('div'), el('div')]);
+  }
+
+  /** The daylight bar: crisp segments per light phase, markers for sunrise/sunset, dots for stops. */
+  function renderBar(d) {
+    var s = d.sun, mn = s.minutes;
+    var g = svg('svg', { class: 'bar', viewBox: '0 0 ' + W + ' 30', preserveAspectRatio: 'none', role: 'img' });
+    g.appendChild(svg('title', {})).textContent = 'Day ' + d.number + ' daylight';
+    var defs = svg('defs', {});
+    var grad = svg('linearGradient', { id: 'day' + d.id, x1: '0', x2: '1', y1: '0', y2: '0' });
+    [['0%', 'var(--sd-day)'], ['50%', 'var(--sd-day-2)'], ['100%', 'var(--sd-day)']].forEach(function (st) { grad.appendChild(svg('stop', { offset: st[0], 'stop-color': st[1] })); });
+    defs.appendChild(grad); g.appendChild(defs);
+    var clip = svg('clipPath', { id: 'clip' + d.id }); clip.appendChild(svg('rect', { x: 0, y: 3, width: W, height: 24, rx: 6 })); defs.appendChild(clip);
+    var body = svg('g', { 'clip-path': 'url(#clip' + d.id + ')' }); g.appendChild(body);
+    var seg = function (a, b, fill) {
+      if (a === null || b === null || b <= a) return;
+      body.appendChild(svg('rect', { class: 'seg', x: Math.max(0, a), y: 3, width: Math.min(W, b) - Math.max(0, a), height: 24, fill: fill }));
+    };
+    seg(0, W, 'var(--sd-night)');
+    if (s.polar === 'day') seg(0, W, 'url(#day' + d.id + ')');
+    else if (s.polar === 'night') { seg(mn.astroDawn, mn.astroDusk, 'var(--sd-astro)'); seg(mn.nauticalDawn, mn.nauticalDusk, 'var(--sd-nautical)'); seg(mn.civilDawn, mn.civilDusk, 'var(--sd-blue)'); }
+    else {
+      seg(mn.astroDawn === null ? 0 : mn.astroDawn, mn.astroDusk === null ? W : mn.astroDusk, 'var(--sd-astro)');
+      seg(mn.nauticalDawn === null ? 0 : mn.nauticalDawn, mn.nauticalDusk === null ? W : mn.nauticalDusk, 'var(--sd-nautical)');
+      seg(mn.civilDawn === null ? 0 : mn.civilDawn, mn.civilDusk === null ? W : mn.civilDusk, 'var(--sd-blue)');
+      seg(mn.blueDawnEnd, mn.blueDuskStart, 'var(--sd-gold)');
+      seg(mn.goldenDawnEnd, mn.goldenDuskStart, 'url(#day' + d.id + ')');
+      [mn.sunrise, mn.sunset].forEach(function (x) { if (x !== null) body.appendChild(svg('rect', { x: x - 1, y: 3, width: 2, height: 24, fill: 'var(--sd-mark)', opacity: 0.9 })); });
+      if (mn.noon !== null) body.appendChild(svg('rect', { x: mn.noon - 0.5, y: 3, width: 1, height: 24, fill: '#000', opacity: 0.12 }));
+    }
+    var wrap = el('div', { class: 'barwrap' }, [g]);
+    d.stops.forEach(function (st) {
+      if (st.minutes === null) return;
+      var light = lightAt(st.minutes, s);
+      wrap.appendChild(el('span', {
+        class: 'stopdot l-' + light,
+        style: 'left:' + (Math.max(0, Math.min(W, st.minutes)) / W * 100) + '%',
+        title: st.name + ' · ' + st.time + ' · ' + ({ golden: 'golden hour', blue: 'blue hour', day: 'daylight', dark: 'dark' })[light]
+      }));
+    });
+    return wrap;
+  }
+  function lightAt(minutes, s) {
+    if (s.polar === 'day') return 'day';
+    if (s.polar === 'night') return 'dark';
+    var m = s.minutes, inside = function (a, b) { return a !== null && b !== null && minutes >= a && minutes <= b; };
+    if (inside(m.blueDawnEnd, m.goldenDawnEnd) || inside(m.goldenDuskStart, m.blueDuskStart)) return 'golden';
+    if (inside(m.civilDawn, m.blueDawnEnd) || inside(m.blueDuskStart, m.civilDusk)) return 'blue';
+    if (m.goldenDawnEnd !== null && m.goldenDuskStart !== null && minutes > m.goldenDawnEnd && minutes < m.goldenDuskStart) return 'day';
+    return 'dark';
+  }
+
+  function skyLine(d) {
+    if (!d.sky || (!d.sky.sunrise && !d.sky.sunset)) return null;
+    var pick = function (x) { return x ? (/rain|drizzle|snow|thunder/i.test(x.main) ? 'rain' : /cloud|fog|mist|overcast/i.test(x.main) ? 'cloud' : 'sun') : null; };
+    var line = el('div', { class: 'sky' });
+    if (d.sky.sunrise) line.appendChild(el('span', {}, [icon(pick(d.sky.sunrise)), ' ' + d.sky.sunrise.main.toLowerCase() + ' at sunrise']));
+    if (d.sky.sunset) line.appendChild(el('span', {}, [icon(pick(d.sky.sunset)), ' ' + d.sky.sunset.main.toLowerCase() + ' at sunset']));
+    return line;
+  }
+
+  function renderDay(d, m) {
+    var row = el('div', { class: 'trek-card grid day' + (d.shoot.on ? ' shoot' : ''), 'data-day': d.id });
+    var where = d.anchor
+      ? el('div', { class: 'where', title: d.anchor.name + ' (' + SRC[d.anchor.source] + ')' }, [d.anchor.name + ' ', el('span', { class: 'src', text: d.anchor.source === 'stop' ? '' : '· ' + SRC[d.anchor.source] })])
+      : el('div', { class: 'where trek-faint', text: 'no located stop or stay' });
+    row.appendChild(el('div', { class: 'who' }, [
+      el('div', { class: 'n' }, [el('b', { text: 'Day ' + d.number }), el('span', { class: 'd', text: fmtDate(d.date) + (d.title ? ' · ' + d.title : '') })]),
+      where,
+      skyLine(d)
+    ]));
+    if (d.sun) {
+      var s = d.sun, t = s.times;
+      row.appendChild(renderBar(d));
+      var times = el('div', { class: 'times' });
+      var add = function (k, v, cls) { times.appendChild(el('span', { class: 'k', text: k })); times.appendChild(el('span', { class: cls || '', text: v })); };
+      if (s.polar === 'day') { add('sun', 'up all day'); add('daylight', '24h 00m', 'len'); }
+      else if (s.polar === 'night') { add('sun', 'below the horizon'); add('twilight', t.civilDawn ? t.civilDawn + ' – ' + t.civilDusk : 'none', 'len'); }
+      else {
+        add('rise', t.sunrise + '  ·  golden to ' + t.goldenDawnEnd, '');
+        add('set', t.sunset + '  ·  golden from ' + t.goldenDuskStart, '');
+        add('blue', t.civilDawn + '–' + t.blueDawnEnd + '  ·  ' + t.blueDuskStart + '–' + t.civilDusk, 'len');
+        add('light', s.dayLength, 'len');
+      }
+      row.appendChild(times);
+    } else {
+      row.appendChild(el('div', { class: 'empty' }, [
+        el('b', { text: d.reason === 'no-date' ? 'No date on this day. ' : 'Nowhere to compute from yet. ' }),
+        d.reason === 'no-date' ? 'Give the trip dates to plot it.' : 'Add a located stop or a stay and the sun times appear.'
+      ]));
+    }
+    var btn = el('button', { class: 'shoot-btn' + (d.shoot.on ? ' on' : ''), type: 'button', title: d.shoot.on ? 'Unmark shoot day' : 'Mark as a shoot day', 'aria-pressed': String(d.shoot.on) }, [icon('camera')]);
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      post('/shoot-day', { tripId: state.tripId, dayId: d.id, on: !d.shoot.on, note: d.shoot.note }).then(function () {
+        trek.notify('success', d.shoot.on ? 'Day ' + d.number + ' unmarked' : 'Day ' + d.number + ' marked as a shoot day');
+        load();
+      }).catch(function () { btn.disabled = false; });
+    });
+    row.appendChild(btn);
+    if (d.shoot.on) {
+      var input = el('input', { class: 'trek-input', type: 'text', maxlength: '200', placeholder: 'What are you shooting? (shared with the trip)', value: d.shoot.note || '' });
+      var save = function () {
+        if ((input.value || '').trim() === (d.shoot.note || '')) return;
+        post('/shoot-day', { tripId: state.tripId, dayId: d.id, on: true, note: input.value }).then(function () { d.shoot.note = input.value.trim(); trek.notify('success', 'Note saved'); });
+      };
+      input.addEventListener('change', save);
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
+      row.appendChild(el('div', { class: 'note' }, [el('span', { class: 'tag', text: 'Shoot day' }), input]));
+    }
+    return row;
+  }
+
+  function renderSkeleton() {
+    var days = $('days');
+    days.className = 'skeleton';
+    days.innerHTML = '';
+    for (var i = 0; i < 5; i++) days.appendChild(el('div', { class: 'trek-card trek-skeleton day' }));
+  }
+
+  // ─── bridge ───────────────────────────────────────────────────────────────
+  trek.onContext(function (ctx) {
+    state.locale = ctx.locale || 'en';
+    var id = ctx.tripId ? String(ctx.tripId) : null;
+    if (id !== state.tripId) {
+      state.tripId = id; state.model = null;
+      if (id) { renderSkeleton(); load(); }
+      else {
+        $('days').className = '';
+        $('days').innerHTML = '';
+        $('days').appendChild(el('div', { class: 'msg' }, [el('b', { text: 'Open a trip' }), 'Sundial lives in the trip planner and plots the sun for the trip you are looking at.']));
+      }
+    } else if (state.model) {
+      render(); // theme/locale changed: re-render with the same data
+    }
+  });
+  trek.onEvent(function (name) {
+    if (/^plugin:sundial:|^(assignment|day|place|accommodation|trip):/.test(String(name))) reloadSoon();
+  });
+})();
+</script>
+</body>
+</html>

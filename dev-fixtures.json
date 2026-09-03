@@ -1,0 +1,109 @@
+{
+  "_comment": "Feeds `trek-plugin dev` (and the unit tests) — the full MockHostOptions object. Trip 1 is an eight-day Japan trip; user 1 is a member, user 9 is not.",
+  "actingUserId": 1,
+  "users": {
+    "1": { "id": 1, "username": "ada", "display_name": "Ada" },
+    "2": { "id": 2, "username": "ben", "display_name": "Ben" }
+  },
+  "weatherResult": {
+    "temp": 27,
+    "temp_max": 31,
+    "temp_min": 23,
+    "main": "Clouds",
+    "description": "scattered clouds",
+    "type": "forecast",
+    "sunrise": "05:20",
+    "sunset": "18:05",
+    "precipitation_probability_max": 30,
+    "hourly": [
+      { "hour": 0, "temp": 24, "precipitation": 0, "precipitation_probability": 5, "main": "Clear", "wind": 6, "humidity": 80 },
+      { "hour": 1, "temp": 24, "precipitation": 0, "precipitation_probability": 5, "main": "Clear", "wind": 6, "humidity": 81 },
+      { "hour": 2, "temp": 23, "precipitation": 0, "precipitation_probability": 5, "main": "Clear", "wind": 5, "humidity": 82 },
+      { "hour": 3, "temp": 23, "precipitation": 0, "precipitation_probability": 5, "main": "Clear", "wind": 5, "humidity": 83 },
+      { "hour": 4, "temp": 23, "precipitation": 0, "precipitation_probability": 5, "main": "Clear", "wind": 5, "humidity": 84 },
+      { "hour": 5, "temp": 23, "precipitation": 0, "precipitation_probability": 5, "main": "Clear", "wind": 6, "humidity": 84 },
+      { "hour": 6, "temp": 24, "precipitation": 0, "precipitation_probability": 5, "main": "Clear", "wind": 7, "humidity": 80 },
+      { "hour": 7, "temp": 25, "precipitation": 0, "precipitation_probability": 10, "main": "Clouds", "wind": 8, "humidity": 76 },
+      { "hour": 8, "temp": 27, "precipitation": 0, "precipitation_probability": 10, "main": "Clouds", "wind": 9, "humidity": 70 },
+      { "hour": 9, "temp": 28, "precipitation": 0, "precipitation_probability": 15, "main": "Clouds", "wind": 10, "humidity": 65 },
+      { "hour": 10, "temp": 29, "precipitation": 0, "precipitation_probability": 20, "main": "Clouds", "wind": 11, "humidity": 60 },
+      { "hour": 11, "temp": 30, "precipitation": 0, "precipitation_probability": 25, "main": "Clouds", "wind": 12, "humidity": 58 },
+      { "hour": 12, "temp": 31, "precipitation": 0, "precipitation_probability": 30, "main": "Clouds", "wind": 12, "humidity": 55 },
+      { "hour": 13, "temp": 31, "precipitation": 0.2, "precipitation_probability": 30, "main": "Rain", "wind": 13, "humidity": 56 },
+      { "hour": 14, "temp": 30, "precipitation": 0.4, "precipitation_probability": 30, "main": "Rain", "wind": 13, "humidity": 60 },
+      { "hour": 15, "temp": 30, "precipitation": 0, "precipitation_probability": 20, "main": "Clouds", "wind": 12, "humidity": 62 },
+      { "hour": 16, "temp": 29, "precipitation": 0, "precipitation_probability": 15, "main": "Clouds", "wind": 11, "humidity": 65 },
+      { "hour": 17, "temp": 28, "precipitation": 0, "precipitation_probability": 10, "main": "Clear", "wind": 9, "humidity": 68 },
+      { "hour": 18, "temp": 27, "precipitation": 0, "precipitation_probability": 5, "main": "Clear", "wind": 8, "humidity": 72 },
+      { "hour": 19, "temp": 26, "precipitation": 0, "precipitation_probability": 5, "main": "Clear", "wind": 7, "humidity": 75 },
+      { "hour": 20, "temp": 25, "precipitation": 0, "precipitation_probability": 5, "main": "Clear", "wind": 6, "humidity": 77 },
+      { "hour": 21, "temp": 25, "precipitation": 0, "precipitation_probability": 5, "main": "Clear", "wind": 6, "humidity": 78 },
+      { "hour": 22, "temp": 24, "precipitation": 0, "precipitation_probability": 5, "main": "Clear", "wind": 6, "humidity": 79 },
+      { "hour": 23, "temp": 24, "precipitation": 0, "precipitation_probability": 5, "main": "Clear", "wind": 6, "humidity": 80 }
+    ]
+  },
+  "trips": {
+    "1": {
+      "members": [1, 2],
+      "data": { "id": 1, "title": "Japan in September", "start_date": "2026-09-05", "end_date": "2026-09-12", "currency": "JPY" },
+      "places": [
+        { "id": 20, "trip_id": 1, "name": "Itsukushima Shrine", "lat": 34.2959, "lng": 132.3198, "created_at": "2026-06-01T10:00:00Z" },
+        { "id": 19, "trip_id": 1, "name": "Lake Kawaguchi", "lat": 35.5171, "lng": 138.7514, "created_at": "2026-05-20T10:00:00Z" },
+        { "id": 18, "trip_id": 1, "name": "Arashiyama Bamboo Grove", "lat": 35.0170, "lng": 135.6717, "created_at": "2026-05-12T10:00:00Z" },
+        { "id": 17, "trip_id": 1, "name": "Fushimi Inari Taisha", "lat": 34.9671, "lng": 135.7727, "created_at": "2026-05-11T10:00:00Z" },
+        { "id": 16, "trip_id": 1, "name": "Kiyomizu-dera", "lat": 34.9949, "lng": 135.7850, "created_at": "2026-05-10T10:00:00Z" },
+        { "id": 15, "trip_id": 1, "name": "Ryokan Gion", "lat": 35.0036, "lng": 135.7780, "created_at": "2026-05-09T10:00:00Z" },
+        { "id": 14, "trip_id": 1, "name": "Shibuya Sky", "lat": 35.6585, "lng": 139.7022, "created_at": "2026-05-08T10:00:00Z" },
+        { "id": 13, "trip_id": 1, "name": "Meiji Jingu", "lat": 35.6764, "lng": 139.6993, "created_at": "2026-05-07T10:00:00Z" },
+        { "id": 12, "trip_id": 1, "name": "Tsukiji Outer Market", "lat": 35.6655, "lng": 139.7708, "created_at": "2026-05-06T10:00:00Z" },
+        { "id": 11, "trip_id": 1, "name": "Senso-ji", "lat": 35.7148, "lng": 139.7967, "created_at": "2026-05-05T10:00:00Z" },
+        { "id": 10, "trip_id": 1, "name": "Hotel Asakusa", "lat": 35.7119, "lng": 139.7965, "created_at": "2026-05-04T10:00:00Z" },
+        { "id": 21, "trip_id": 1, "name": "Somewhere unlocated", "lat": null, "lng": null, "created_at": "2026-06-02T10:00:00Z" }
+      ],
+      "days": [
+        { "id": 101, "trip_id": 1, "day_number": 1, "date": "2026-09-05", "title": "Arrive in Tokyo",
+          "assignments": [
+            { "id": 1001, "day_id": 101, "place_id": 11, "order_index": 0, "assignment_time": "16:30", "place": { "id": 11, "name": "Senso-ji", "lat": 35.7148, "lng": 139.7967, "place_time": null } }
+          ], "notes_items": [] },
+        { "id": 102, "trip_id": 1, "day_number": 2, "date": "2026-09-06", "title": "Tokyo east",
+          "assignments": [
+            { "id": 1002, "day_id": 102, "place_id": 12, "order_index": 0, "assignment_time": "05:30", "place": { "id": 12, "name": "Tsukiji Outer Market", "lat": 35.6655, "lng": 139.7708, "place_time": null } },
+            { "id": 1003, "day_id": 102, "place_id": 13, "order_index": 1, "assignment_time": "10:00", "place": { "id": 13, "name": "Meiji Jingu", "lat": 35.6764, "lng": 139.6993, "place_time": null } },
+            { "id": 1004, "day_id": 102, "place_id": 14, "order_index": 2, "assignment_time": "17:45", "place": { "id": 14, "name": "Shibuya Sky", "lat": 35.6585, "lng": 139.7022, "place_time": null } }
+          ], "notes_items": [] },
+        { "id": 103, "trip_id": 1, "day_number": 3, "date": "2026-09-07", "title": "Shinkansen to Kyoto",
+          "assignments": [
+            { "id": 1005, "day_id": 103, "place_id": 16, "order_index": 0, "assignment_time": "15:00", "place": { "id": 16, "name": "Kiyomizu-dera", "lat": 34.9949, "lng": 135.7850, "place_time": null } }
+          ], "notes_items": [] },
+        { "id": 104, "trip_id": 1, "day_number": 4, "date": "2026-09-08", "title": "Kyoto shrines",
+          "assignments": [
+            { "id": 1006, "day_id": 104, "place_id": 17, "order_index": 0, "assignment_time": "05:00", "place": { "id": 17, "name": "Fushimi Inari Taisha", "lat": 34.9671, "lng": 135.7727, "place_time": null } },
+            { "id": 1007, "day_id": 104, "place_id": 18, "order_index": 1, "assignment_time": "08:30", "place": { "id": 18, "name": "Arashiyama Bamboo Grove", "lat": 35.0170, "lng": 135.6717, "place_time": null } }
+          ], "notes_items": [] },
+        { "id": 105, "trip_id": 1, "day_number": 5, "date": "2026-09-09", "title": "Free day in Kyoto",
+          "assignments": [], "notes_items": [] },
+        { "id": 106, "trip_id": 1, "day_number": 6, "date": "2026-09-10", "title": "Miyajima",
+          "assignments": [
+            { "id": 1008, "day_id": 106, "place_id": 20, "order_index": 0, "assignment_time": "20:30", "place": { "id": 20, "name": "Itsukushima Shrine", "lat": 34.2959, "lng": 132.3198, "place_time": null } }
+          ], "notes_items": [] },
+        { "id": 107, "trip_id": 1, "day_number": 7, "date": "2026-09-11", "title": "Fuji Five Lakes",
+          "assignments": [
+            { "id": 1009, "day_id": 107, "place_id": 19, "order_index": 0, "assignment_time": null, "place": { "id": 19, "name": "Lake Kawaguchi", "lat": 35.5171, "lng": 138.7514, "place_time": "06:00" } }
+          ], "notes_items": [] },
+        { "id": 108, "trip_id": 1, "day_number": 8, "date": "2026-09-12", "title": "Fly home",
+          "assignments": [], "notes_items": [] }
+      ],
+      "accommodations": [
+        { "id": 501, "trip_id": 1, "place_id": 10, "start_day_id": 101, "end_day_id": 103, "place_name": "Hotel Asakusa", "place_lat": 35.7119, "place_lng": 139.7965 },
+        { "id": 502, "trip_id": 1, "place_id": 15, "start_day_id": 103, "end_day_id": 106, "place_name": "Ryokan Gion", "place_lat": 35.0036, "place_lng": 135.7780 }
+      ]
+    },
+    "2": {
+      "members": [9],
+      "data": { "id": 2, "title": "Someone else's trip", "start_date": "2026-10-01", "end_date": "2026-10-03" },
+      "days": [
+        { "id": 201, "trip_id": 2, "day_number": 1, "date": "2026-10-01", "assignments": [], "notes_items": [] }
+      ]
+    }
+  }
+}
