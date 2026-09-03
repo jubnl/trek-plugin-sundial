@@ -2,3 +2,4 @@ node_modules/
 .trek-dev/
 plugin.zip
 client/harness.html
+.idea/
