@@ -107,7 +107,8 @@ function stopsOf(day) {
  * Build the per-day model.
  * @param {{
  *   trip: object, days: object[], accommodations?: object[], places?: object[],
- *   zone?: string|null, shootDays?: Array<{day_id:number, note?:string|null, user_id?:number|null}>,
+ *   zone?: string|null, zoneSource?: 'user'|'request',
+ *   shootDays?: Array<{day_id:number, note?:string|null, user_id?:number|null}>,
  *   goldenAltitude?: number, clock?: '24h'|'12h'
  * }} input
  */
@@ -118,6 +119,7 @@ function buildTripModel(input) {
   );
   const anchors = resolveAnchors(days, input.accommodations, input.places);
   const userZone = input.zone && sun.isValidZone(input.zone) ? input.zone : null;
+  const zoneSource = userZone ? (input.zoneSource === 'request' ? 'request' : 'user') : 'auto';
   const golden = sun.clampGolden(input.goldenAltitude);
   const clock = input.clock === '12h' ? '12h' : '24h';
   const marks = new Map((input.shootDays || []).map((s) => [Number(s.day_id), s]));
@@ -125,7 +127,8 @@ function buildTripModel(input) {
   const out = days.map((day, i) => {
     const anchor = anchors[i];
     const date = dateFor(day, trip);
-    const zone = userZone || (anchor ? sun.zoneFromLongitude(anchor.lng) : null);
+    const zoneAuto = anchor ? sun.zoneFromLongitude(anchor.lng) : null;
+    const zone = userZone || zoneAuto;
     let solar = null;
     let reason = null;
     if (!date) reason = 'no-date';
@@ -138,6 +141,16 @@ function buildTripModel(input) {
       }
     }
     const mark = marks.get(Number(day.id));
+    // A pinned zone is one zone for the whole trip. When a day's location sits far
+    // from it (Zurich pinned, a day in Tokyo), the wall clock is still Zurich's, so
+    // say so rather than quietly reporting a sunrise at 22:15.
+    let zoneMismatch = null;
+    if (solar && userZone && anchor) {
+      const estimated = Math.round(anchor.lng / 15) * 60;
+      if (Math.abs(solar.offsetMinutes - estimated) >= 90) {
+        zoneMismatch = { pinned: userZone, pinnedOffset: solar.offsetMinutes, estimatedZone: zoneAuto, estimatedOffset: estimated };
+      }
+    }
     return {
       id: day.id,
       number: Number(day.day_number) || i + 1,
@@ -145,6 +158,7 @@ function buildTripModel(input) {
       title: day.title || null,
       anchor,
       zone,
+      zoneMismatch,
       stops: stopsOf(day),
       sun: solar ? present(solar, clock) : null,
       reason,
@@ -154,7 +168,7 @@ function buildTripModel(input) {
 
   return {
     trip: { id: trip.id, title: trip.title || null, start: trip.start_date || null, end: trip.end_date || null },
-    zone: { name: userZone, source: userZone ? 'user' : 'auto' },
+    zone: { name: userZone, source: zoneSource },
     settings: { goldenAltitude: golden, clock },
     days: out,
     summary: summarize(out),
@@ -199,20 +213,44 @@ function summarize(days) {
     shortestDay: shortest ? { day: shortest.number, length: shortest.sun.dayLength } : null,
     polarDays: days.filter((d) => d.sun && d.sun.polar === 'day').length,
     polarNights: days.filter((d) => d.sun && d.sun.polar === 'night').length,
+    zoneMismatches: days.filter((d) => d.zoneMismatch).length,
   };
 }
 
-/** A stop's relation to the light: 'golden' | 'blue' | 'dark' | 'day' | null (no time / no sun). */
-function lightAt(minutes, s) {
-  if (minutes === null || !s) return null;
-  if (s.polar === 'day') return 'day';
-  if (s.polar === 'night') return 'dark';
+/**
+ * The day as painted segments, in paint order (later entries cover earlier ones).
+ * A missing boundary means the sun never crossed that altitude: on a non-polar
+ * day the phase then simply extends to the edge of the day, which is exactly what
+ * the bar should show — and what a stop at that minute should be classified as.
+ * The client keeps a verbatim copy for the bar.
+ */
+function segments(s) {
+  const W = 1440;
   const m = s.minutes;
-  const inside = (a, b) => a !== null && b !== null && minutes >= a && minutes <= b;
-  if (inside(m.blueDawnEnd, m.goldenDawnEnd) || inside(m.goldenDuskStart, m.blueDuskStart)) return 'golden';
-  if (inside(m.civilDawn, m.blueDawnEnd) || inside(m.blueDuskStart, m.civilDusk)) return 'blue';
-  if (m.goldenDawnEnd !== null && m.goldenDuskStart !== null && minutes > m.goldenDawnEnd && minutes < m.goldenDuskStart) return 'day';
-  return 'dark';
+  const lo = (v) => (v === null || v === undefined ? 0 : v);
+  const hi = (v) => (v === null || v === undefined ? W : v);
+  const out = [{ a: 0, b: W, kind: 'night' }];
+  if (s.polar === 'day') return out.concat([{ a: 0, b: W, kind: 'day' }]);
+  if (s.polar === 'night') {
+    if (m.astroDawn !== null) out.push({ a: m.astroDawn, b: m.astroDusk, kind: 'astro' });
+    if (m.nauticalDawn !== null) out.push({ a: m.nauticalDawn, b: m.nauticalDusk, kind: 'nautical' });
+    if (m.civilDawn !== null) out.push({ a: m.civilDawn, b: m.civilDusk, kind: 'blue' });
+    return out;
+  }
+  out.push({ a: lo(m.astroDawn), b: hi(m.astroDusk), kind: 'astro' });
+  out.push({ a: lo(m.nauticalDawn), b: hi(m.nauticalDusk), kind: 'nautical' });
+  out.push({ a: lo(m.civilDawn), b: hi(m.civilDusk), kind: 'blue' });
+  out.push({ a: lo(m.blueDawnEnd), b: hi(m.blueDuskStart), kind: 'golden' });
+  if (m.goldenDawnEnd !== null && m.goldenDuskStart !== null) out.push({ a: m.goldenDawnEnd, b: m.goldenDuskStart, kind: 'day' });
+  return out;
 }
 
-module.exports = { buildTripModel, resolveAnchors, dateFor, lightAt, present, EVENT_KEYS };
+/** A stop's relation to the light: 'golden' | 'blue' | 'day' | 'dark' | null (no time / no sun). */
+function lightAt(minutes, s) {
+  if (minutes === null || minutes === undefined || !s) return null;
+  let kind = 'night';
+  for (const seg of segments(s)) if (minutes >= seg.a && minutes <= seg.b) kind = seg.kind;
+  return kind === 'golden' || kind === 'blue' || kind === 'day' ? kind : 'dark';
+}
+
+module.exports = { buildTripModel, resolveAnchors, dateFor, lightAt, segments, present, EVENT_KEYS };

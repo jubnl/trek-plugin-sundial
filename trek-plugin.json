@@ -1,7 +1,7 @@
 {
   "id": "sundial",
   "name": "Sundial",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "apiVersion": 1,
   "author": "jubnl",
   "description": "Sunrise, sunset, golden hour and blue hour for every day of your trip, computed from where you will actually be.",
@@ -37,10 +37,22 @@
       "scope": "user",
       "default": "6",
       "options": [
-        { "value": "4", "label": "4 degrees (strict)" },
-        { "value": "6", "label": "6 degrees (classic)" },
-        { "value": "8", "label": "8 degrees" },
-        { "value": "10", "label": "10 degrees (generous)" }
+        {
+          "value": "4",
+          "label": "4 degrees (strict)"
+        },
+        {
+          "value": "6",
+          "label": "6 degrees (classic)"
+        },
+        {
+          "value": "8",
+          "label": "8 degrees"
+        },
+        {
+          "value": "10",
+          "label": "10 degrees (generous)"
+        }
       ],
       "hint": "Golden hour always starts 4 degrees below the horizon; this sets how high the sun may climb before the light is no longer golden."
     },
@@ -51,8 +63,14 @@
       "scope": "user",
       "default": "24h",
       "options": [
-        { "value": "24h", "label": "24-hour" },
-        { "value": "12h", "label": "12-hour" }
+        {
+          "value": "24h",
+          "label": "24-hour"
+        },
+        {
+          "value": "12h",
+          "label": "12-hour"
+        }
       ],
       "hint": "How Sundial writes times in the trip tab, the planner rows, the place panel, the PDF and its assistant tools."
     }
@@ -62,20 +80,49 @@
       {
         "name": "sun_times",
         "title": "Sun times",
-        "description": "Sunrise, sunset, golden hour and blue hour. Pass tripId (and optionally dayId) for a trip's days, computed from where the traveller will be; or pass date, lat and lng (and optionally an IANA zone) for any place on any date.",
+        "description": "Sunrise, sunset, golden hour and blue hour. Pass tripId (and optionally dayId) for a trip's days, computed from where the traveller will be; or pass date, lat and lng for any place on any date. An IANA zone is honoured in both modes; in trip mode it overrides the trip's pinned zone for this answer only. Any phase the sun never reaches that day is null.",
         "inputSchema": {
           "type": "object",
           "properties": {
-            "tripId": { "type": "integer", "minimum": 1, "description": "A trip the requesting user can access." },
-            "dayId": { "type": "integer", "minimum": 1, "description": "One day of that trip; omit for every day." },
-            "date": { "type": "string", "format": "date", "description": "YYYY-MM-DD, used with lat and lng. Defaults to today." },
-            "lat": { "type": "number", "minimum": -90, "maximum": 90 },
-            "lng": { "type": "number", "minimum": -180, "maximum": 180 },
-            "zone": { "type": "string", "maxLength": 64, "description": "IANA time zone for the answer, e.g. Asia/Tokyo. Estimated from longitude when omitted." }
+            "tripId": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "A trip the requesting user can access."
+            },
+            "dayId": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "One day of that trip; omit for every day."
+            },
+            "date": {
+              "type": "string",
+              "format": "date",
+              "description": "YYYY-MM-DD, used with lat and lng. Defaults to today."
+            },
+            "lat": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            },
+            "lng": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            },
+            "zone": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "IANA time zone for the answer, e.g. Asia/Tokyo. Trip mode: overrides the trip's pinned zone for this answer. Coordinate mode: estimated from longitude when omitted."
+            }
           },
           "additionalProperties": false
         },
-        "annotations": { "readOnlyHint": true, "idempotentHint": true, "destructiveHint": false, "openWorldHint": false }
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "destructiveHint": false,
+          "openWorldHint": false
+        }
       },
       {
         "name": "list_shoot_days",
@@ -84,12 +131,22 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "tripId": { "type": "integer", "minimum": 1 }
+            "tripId": {
+              "type": "integer",
+              "minimum": 1
+            }
           },
-          "required": ["tripId"],
+          "required": [
+            "tripId"
+          ],
           "additionalProperties": false
         },
-        "annotations": { "readOnlyHint": true, "idempotentHint": true, "destructiveHint": false, "openWorldHint": false }
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "destructiveHint": false,
+          "openWorldHint": false
+        }
       },
       {
         "name": "mark_shoot_day",
@@ -98,15 +155,36 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "tripId": { "type": "integer", "minimum": 1 },
-            "dayId": { "type": "integer", "minimum": 1 },
-            "on": { "type": "boolean", "description": "true to mark, false to clear." },
-            "note": { "type": "string", "maxLength": 200 }
+            "tripId": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "dayId": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "on": {
+              "type": "boolean",
+              "description": "true to mark, false to clear."
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 200
+            }
           },
-          "required": ["tripId", "dayId", "on"],
+          "required": [
+            "tripId",
+            "dayId",
+            "on"
+          ],
           "additionalProperties": false
         },
-        "annotations": { "readOnlyHint": false, "idempotentHint": true, "destructiveHint": false, "openWorldHint": false }
+        "annotations": {
+          "readOnlyHint": false,
+          "idempotentHint": true,
+          "destructiveHint": false,
+          "openWorldHint": false
+        }
       }
     ]
   }

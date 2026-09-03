@@ -65,6 +65,7 @@
     .day .who .where .src { color: var(--text-faint); }
     .day .who .sky { font-size: 11px; color: var(--text-muted); margin-top: 2px; display: flex; gap: 8px; align-items: center; }
     .day .who .sky svg { width: 12px; height: 12px; }
+    .day .who .sky.warn .trek-chip { font-size: 10.5px; padding: 2px 8px; white-space: normal; }
     .barwrap { position: relative; }
     .bar { width: 100%; height: 30px; display: block; }
     .bar .seg { shape-rendering: crispEdges; }
@@ -234,7 +235,7 @@
     if (trig) trig.textContent = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
     var first = m.days.find(function (d) { return d.sun; });
     $('zone-est').textContent = m.zone.name
-      ? offsetLabel(first ? first.sun.offsetMinutes : null)
+      ? offsetLabel(first ? first.sun.offsetMinutes : null) + (m.summary.zoneMismatches ? ' · ' + m.summary.zoneMismatches + (m.summary.zoneMismatches === 1 ? ' day lies' : ' days lie') + ' in another zone' : '')
       : (first ? 'estimated ' + first.zone + ' (' + offsetLabel(first.sun.offsetMinutes) + ')' : '');
     $('zonebox').hidden = false;
   }
@@ -302,19 +303,12 @@
     defs.appendChild(grad); g.appendChild(defs);
     var clip = svg('clipPath', { id: 'clip' + d.id }); clip.appendChild(svg('rect', { x: 0, y: 3, width: W, height: 24, rx: 6 })); defs.appendChild(clip);
     var body = svg('g', { 'clip-path': 'url(#clip' + d.id + ')' }); g.appendChild(body);
-    var seg = function (a, b, fill) {
-      if (a === null || b === null || b <= a) return;
-      body.appendChild(svg('rect', { class: 'seg', x: Math.max(0, a), y: 3, width: Math.min(W, b) - Math.max(0, a), height: 24, fill: fill }));
-    };
-    seg(0, W, 'var(--sd-night)');
-    if (s.polar === 'day') seg(0, W, 'url(#day' + d.id + ')');
-    else if (s.polar === 'night') { seg(mn.astroDawn, mn.astroDusk, 'var(--sd-astro)'); seg(mn.nauticalDawn, mn.nauticalDusk, 'var(--sd-nautical)'); seg(mn.civilDawn, mn.civilDusk, 'var(--sd-blue)'); }
-    else {
-      seg(mn.astroDawn === null ? 0 : mn.astroDawn, mn.astroDusk === null ? W : mn.astroDusk, 'var(--sd-astro)');
-      seg(mn.nauticalDawn === null ? 0 : mn.nauticalDawn, mn.nauticalDusk === null ? W : mn.nauticalDusk, 'var(--sd-nautical)');
-      seg(mn.civilDawn === null ? 0 : mn.civilDawn, mn.civilDusk === null ? W : mn.civilDusk, 'var(--sd-blue)');
-      seg(mn.blueDawnEnd, mn.blueDuskStart, 'var(--sd-gold)');
-      seg(mn.goldenDawnEnd, mn.goldenDuskStart, 'url(#day' + d.id + ')');
+    var FILL = { night: 'var(--sd-night)', astro: 'var(--sd-astro)', nautical: 'var(--sd-nautical)', blue: 'var(--sd-blue)', golden: 'var(--sd-gold)', day: 'url(#day' + d.id + ')' };
+    segments(s).forEach(function (sg) {
+      if (sg.a === null || sg.b === null || sg.b <= sg.a) return;
+      body.appendChild(svg('rect', { class: 'seg', x: Math.max(0, sg.a), y: 3, width: Math.min(W, sg.b) - Math.max(0, sg.a), height: 24, fill: FILL[sg.kind] }));
+    });
+    if (!s.polar) {
       [mn.sunrise, mn.sunset].forEach(function (x) { if (x !== null) body.appendChild(svg('rect', { x: x - 1, y: 3, width: 2, height: 24, fill: 'var(--sd-mark)', opacity: 0.9 })); });
       if (mn.noon !== null) body.appendChild(svg('rect', { x: mn.noon - 0.5, y: 3, width: 1, height: 24, fill: '#000', opacity: 0.12 }));
     }
@@ -330,14 +324,29 @@
     });
     return wrap;
   }
+  // The day as painted segments, in paint order — a verbatim copy of server/model.js
+  // segments(), so the bar and a stop's classification can never disagree.
+  function segments(s) {
+    var m = s.minutes, lo = function (v) { return v === null || v === undefined ? 0 : v; }, hi = function (v) { return v === null || v === undefined ? W : v; };
+    var out = [{ a: 0, b: W, kind: 'night' }];
+    if (s.polar === 'day') return out.concat([{ a: 0, b: W, kind: 'day' }]);
+    if (s.polar === 'night') {
+      if (m.astroDawn !== null) out.push({ a: m.astroDawn, b: m.astroDusk, kind: 'astro' });
+      if (m.nauticalDawn !== null) out.push({ a: m.nauticalDawn, b: m.nauticalDusk, kind: 'nautical' });
+      if (m.civilDawn !== null) out.push({ a: m.civilDawn, b: m.civilDusk, kind: 'blue' });
+      return out;
+    }
+    out.push({ a: lo(m.astroDawn), b: hi(m.astroDusk), kind: 'astro' });
+    out.push({ a: lo(m.nauticalDawn), b: hi(m.nauticalDusk), kind: 'nautical' });
+    out.push({ a: lo(m.civilDawn), b: hi(m.civilDusk), kind: 'blue' });
+    out.push({ a: lo(m.blueDawnEnd), b: hi(m.blueDuskStart), kind: 'golden' });
+    if (m.goldenDawnEnd !== null && m.goldenDuskStart !== null) out.push({ a: m.goldenDawnEnd, b: m.goldenDuskStart, kind: 'day' });
+    return out;
+  }
   function lightAt(minutes, s) {
-    if (s.polar === 'day') return 'day';
-    if (s.polar === 'night') return 'dark';
-    var m = s.minutes, inside = function (a, b) { return a !== null && b !== null && minutes >= a && minutes <= b; };
-    if (inside(m.blueDawnEnd, m.goldenDawnEnd) || inside(m.goldenDuskStart, m.blueDuskStart)) return 'golden';
-    if (inside(m.civilDawn, m.blueDawnEnd) || inside(m.blueDuskStart, m.civilDusk)) return 'blue';
-    if (m.goldenDawnEnd !== null && m.goldenDuskStart !== null && minutes > m.goldenDawnEnd && minutes < m.goldenDuskStart) return 'day';
-    return 'dark';
+    var kind = 'night';
+    segments(s).forEach(function (sg) { if (minutes >= sg.a && minutes <= sg.b) kind = sg.kind; });
+    return kind === 'golden' || kind === 'blue' || kind === 'day' ? kind : 'dark';
   }
 
   function skyLine(d) {
@@ -357,6 +366,9 @@
     row.appendChild(el('div', { class: 'who' }, [
       el('div', { class: 'n' }, [el('b', { text: 'Day ' + d.number }), el('span', { class: 'd', text: fmtDate(d.date) + (d.title ? ' · ' + d.title : '') })]),
       where,
+      d.zoneMismatch ? el('div', { class: 'sky warn', title: 'Pin a different zone, or clear it to follow each day\'s longitude' }, [
+        el('span', { class: 'trek-chip trek-chip--warning', text: d.zoneMismatch.pinned + ' clock · locally about ' + offsetLabel(d.zoneMismatch.estimatedOffset) })
+      ]) : null,
       skyLine(d)
     ]));
     if (d.sun) {
@@ -367,9 +379,10 @@
       if (s.polar === 'day') { add('sun', 'up all day'); add('daylight', '24h 00m', 'len'); }
       else if (s.polar === 'night') { add('sun', 'below the horizon'); add('twilight', t.civilDawn ? t.civilDawn + ' – ' + t.civilDusk : 'none', 'len'); }
       else {
-        add('rise', t.sunrise + '  ·  golden to ' + t.goldenDawnEnd, '');
-        add('set', t.sunset + '  ·  golden from ' + t.goldenDuskStart, '');
-        add('blue', t.civilDawn + '–' + t.blueDawnEnd + '  ·  ' + t.blueDuskStart + '–' + t.civilDusk, 'len');
+        var rng = function (a, b) { return a && b ? a + '–' + b : null; };
+        add('rise', t.sunrise + (t.goldenDawnEnd ? '  ·  golden to ' + t.goldenDawnEnd : '  ·  golden light all day'), '');
+        add('set', t.sunset + (t.goldenDuskStart ? '  ·  golden from ' + t.goldenDuskStart : ''), '');
+        add('blue', [rng(t.civilDawn, t.blueDawnEnd), rng(t.blueDuskStart, t.civilDusk)].filter(Boolean).join('  ·  ') || 'none', 'len');
         add('light', s.dayLength, 'len');
       }
       row.appendChild(times);

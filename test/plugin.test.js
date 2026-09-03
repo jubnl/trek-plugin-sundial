@@ -279,3 +279,95 @@ test('without db:meta, weather:read and ws:broadcast:trip the routes still succe
   assert.equal(mark.status, 200);
   assert.equal(h.broadcasts.length, 0);
 });
+
+// ─── 1.1.0: polar / high-latitude answers, shootDay shape, zone in trip mode ─
+
+const SVALBARD = { date: '2026-12-15', lat: 78.2232, lng: 15.6267, zone: 'Arctic/Longyearbyen' };
+const TROMSO_JAN = { date: '2026-01-25', lat: 69.6496, lng: 18.956, zone: 'Europe/Oslo' };
+const HELSINKI_JUNE = { date: '2026-06-21', lat: 60.1699, lng: 24.9384, zone: 'Europe/Helsinki' };
+
+test('sun_times never emits "null-null": polar night yields nulls, not strings', async () => {
+  const r = await host().run(plugin).hook('mcpToolProvider', 'callTool', { name: 'sun_times', args: SVALBARD });
+  assert.equal(r.polar, 'night');
+  assert.equal(r.dayLength, '0h 00m');
+  for (const k of ['sunrise', 'sunset', 'blueHourMorning', 'goldenHourMorning', 'goldenHourEvening', 'blueHourEvening', 'solarNoon' === 'x' ? 'x' : 'astronomicalDawn']) {
+    if (k === 'astronomicalDawn') continue; // astronomical twilight does exist at noon there
+    assert.equal(r[k], null, `${k} should be null`);
+  }
+  assert.ok(!JSON.stringify(r).includes('null-'), 'no half-formed ranges');
+  assert.equal(r.zoneSource, 'request');
+});
+
+test('low winter sun that rises but never leaves the golden hour: morning golden range is null, rows say so', async () => {
+  const drv = host().run(plugin);
+  const r = await drv.hook('mcpToolProvider', 'callTool', { name: 'sun_times', args: TROMSO_JAN });
+  assert.equal(r.polar, null);
+  assert.ok(r.sunrise && r.sunset, 'the sun does rise');
+  assert.equal(r.goldenHourMorning, null);
+  assert.equal(r.goldenHourEvening, null);
+  assert.ok(r.blueHourMorning, 'blue hour still happens');
+  const { scheduleRows, pdfSections } = plugin.__internals;
+  const { buildTripModel } = require('../server/model.js');
+  const model = buildTripModel({
+    trip: { id: 5, start_date: '2026-01-25' },
+    days: [{ id: 1, day_number: 1, date: '2026-01-25', assignments: [{ id: 1, place_id: 1, place: { id: 1, name: 'Tromso', lat: 69.6496, lng: 18.956 } }] }],
+    zone: 'Europe/Oslo',
+  });
+  const rows = scheduleRows(model);
+  assert.match(rows[0].label, /low sun all day/);
+  assert.match(rows[1].label, /^Sunset \d\d:\d\d$/);
+  assert.equal(pdfSections(model)[0].table.rows[0][4], 'all day');
+  assert.ok(!rows.some((x) => /null/.test(x.label)));
+});
+
+test('midsummer at 63N: the sun sets but never leaves the golden band, so blue/golden evening ranges are null and 00:30 is golden', async () => {
+  const TRONDHEIM = { date: '2026-06-21', lat: 63.4305, lng: 10.3951, zone: 'Europe/Oslo' };
+  const r = await host().run(plugin).hook('mcpToolProvider', 'callTool', { name: 'sun_times', args: TRONDHEIM });
+  assert.equal(r.polar, null);
+  assert.equal(r.sunset, '23:38');
+  assert.equal(r.blueHourEvening, null, 'civil twilight never ends');
+  assert.equal(r.goldenHourEvening, null, 'golden light runs through the night, so the range has no end');
+  assert.equal(r.goldenHourMorning, null);
+  assert.ok(!JSON.stringify(r).includes('null-'));
+  const { lightAt, present } = require('../server/model.js');
+  const s = present(require('../server/sun.js').sunTimes(TRONDHEIM), '24h');
+  assert.equal(lightAt(30, s), 'golden');
+  assert.equal(lightAt(12 * 60, s), 'day');
+  assert.equal(lightAt(22 * 60 + 30, s), 'golden');
+});
+
+test('shootDay is always an object, and both sun_times modes share one field order', async () => {
+  const drv = host({ queryResults: { [SHOOT_SQL]: [{ day_id: 104, note: 'x', user_id: 1 }] } }).run(plugin);
+  const all = await drv.hook('mcpToolProvider', 'callTool', { name: 'sun_times', args: { tripId: 1 } });
+  assert.deepEqual(all.days[0].shootDay, { on: false, note: null });
+  assert.deepEqual(all.days[3].shootDay, { on: true, note: 'x' });
+  const spot = await drv.hook('mcpToolProvider', 'callTool', { name: 'sun_times', args: { date: '2026-09-05', lat: 35.7148, lng: 139.7967, zone: 'Asia/Tokyo' } });
+  const spotKeys = Object.keys(spot).filter((k) => !['date', 'zone', 'zoneSource'].includes(k));
+  assert.deepEqual(Object.keys(all.days[0].sun), spotKeys);
+  assert.equal(all.days[0].sun.sunrise, spot.sunrise);
+});
+
+test('zone is honoured in trip mode (request-scoped) and flags days far from a pinned zone', async () => {
+  const drv = host().run(plugin);
+  const r = await drv.hook('mcpToolProvider', 'callTool', { name: 'sun_times', args: { tripId: 1, zone: 'Europe/Zurich' } });
+  assert.deepEqual(r.zone, { name: 'Europe/Zurich', source: 'request' });
+  assert.equal(r.days[0].zone, 'Europe/Zurich');
+  assert.match(r.days[0].sun.sunrise, /^22:1\d$/, 'Tokyo sunrise on Zurich clocks is the previous evening');
+  assert.equal(r.summary.zoneMismatches, 8);
+  assert.deepEqual(r.days[0].zoneMismatch, { pinned: 'Europe/Zurich', pinnedOffset: 120, estimatedZone: 'Etc/GMT-9', estimatedOffset: 540 });
+  await assert.rejects(drv.hook('mcpToolProvider', 'callTool', { name: 'sun_times', args: { tripId: 1, zone: 'Mars/Olympus' } }), /unknown time zone/);
+
+  const pinned = host({ queryResults: { [PREFS_SQL]: [{ zone: 'Europe/Zurich' }] } }).run(plugin);
+  const w = await pinned.hook('warningProvider', 'getWarnings', 1);
+  assert.equal(w.filter((x) => /pinned zone Europe\/Zurich is UTC\+2/.test(x.message)).length, 8);
+  assert.ok(w.every((x) => x.message.length <= 300));
+  const tokyo = await host({ queryResults: { [PREFS_SQL]: [{ zone: 'Asia/Tokyo' }] } }).run(plugin).hook('warningProvider', 'getWarnings', 1);
+  assert.equal(tokyo.length, 2, 'a matching pinned zone raises nothing');
+
+  // The forecast sky is read at the LOCATION's hour (the fixture's local sunset 18:05 → Clear),
+  // never at the pinned zone's hour (11:xx → Clouds).
+  const zurich = await tripModel(host({ queryResults: { [PREFS_SQL]: [{ zone: 'Europe/Zurich' }] } }));
+  assert.match(zurich.body.days[0].sun.times.sunset, /^11:0\d$/);
+  assert.equal(zurich.body.days[0].sky.sunset.main, 'Clear');
+  assert.equal(zurich.body.days[0].sky.sunrise.main, 'Clear');
+});

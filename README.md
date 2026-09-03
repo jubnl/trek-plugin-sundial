@@ -34,7 +34,12 @@ manage shoot days on your behalf.
 
 Times are shown in the trip's time zone. Until you pin one in the tab, Sundial estimates a
 zone from each day's longitude, which can be an hour off in places that keep an unusual
-zone, so pick the real one from the list once; it is remembered for the trip. For days
+zone, so pick the real one from the list once; it is remembered for the trip. A pinned zone
+is one zone for the whole trip: when a day's location sits more than ninety minutes away
+from it (Zurich pinned, a day in Tokyo), that day is flagged in the tab and in the planner
+warnings rather than quietly showing Zurich's clock. Near the poles, any phase the sun never
+reaches that day is simply left blank: a midwinter day with civil twilight but no sunrise,
+or a midsummer day where the sun stays too low to ever leave the golden hour. For days
 inside the next two weeks the tab also shows the forecast sky at sunrise and sunset, taken
 from TREK's own weather cache.
 
@@ -81,7 +86,16 @@ rather than a longitude estimate; the choice is shared with every member of the 
 
 MCP tools are advertised as `plugin_sundial_sun_times`, `plugin_sundial_list_shoot_days`
 and `plugin_sundial_mark_shoot_day` to assistants whose token carries the `plugins:use`
-scope.
+scope. `sun_times` answers in the same shape in both modes: every phase is a wall-clock
+string or a `"start-end"` range, and `null` when the sun never reaches it; `zone` may be
+passed in either mode.
+
+## Changelog
+
+- **1.1.0**: polar and high-latitude answers never contain `null-null` ranges; `shootDay` is
+  always `{ on, note }`; `zone` is honoured in trip mode; both `sun_times` modes share one
+  field order; days whose location lies outside the trip's pinned zone are flagged.
+- **1.0.0**: first release.
 
 ## Building
 

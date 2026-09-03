@@ -13,6 +13,31 @@ const { definePlugin } = require('trek-plugin-sdk');
 const sun = require('./sun.js');
 const { buildTripModel, lightAt } = require('./model.js');
 
+/** "a-b" only when both ends exist; null otherwise (never "null-null"). */
+function range(a, b) {
+  return a && b ? `${a}-${b}` : null;
+}
+
+/**
+ * One sun block for every assistant-facing answer, in one field order. Any
+ * threshold the sun never crosses that day is null, not a half-formed string.
+ */
+function sunSummary(times, polar, dayLength) {
+  return {
+    polar,
+    dayLength,
+    astronomicalDawn: times.astroDawn,
+    blueHourMorning: range(times.civilDawn, times.blueDawnEnd),
+    sunrise: times.sunrise,
+    goldenHourMorning: range(times.blueDawnEnd, times.goldenDawnEnd),
+    solarNoon: times.noon,
+    goldenHourEvening: range(times.goldenDuskStart, times.blueDuskStart),
+    sunset: times.sunset,
+    blueHourEvening: range(times.blueDuskStart, times.civilDusk),
+    astronomicalDusk: times.astroDusk,
+  };
+}
+
 const JSON_HEADERS = { 'content-type': 'application/json' };
 const WEATHER_WINDOW_DAYS = 16; // Open-Meteo's forecast horizon — beyond it there is nothing to ask
 const MAX_WEATHER_CALLS = 16; // per route call; keeps well inside the per-plugin RPC burst
@@ -127,7 +152,8 @@ async function loadTrip(ctx, tripId, opts = {}) {
     readShootDays(ctx, tripId),
     userSettings(ctx),
   ]);
-  const model = buildTripModel({ trip, days, accommodations, places, zone: prefs ? prefs.zone : null, shootDays, ...settings });
+  const zone = opts.zone ? { zone: opts.zone, zoneSource: 'request' } : { zone: prefs ? prefs.zone : null };
+  const model = buildTripModel({ trip, days, accommodations, places, ...zone, shootDays, ...settings });
   if (opts.index !== false) await refreshPlaceIndex(ctx, model, places);
   if (opts.weather) await addSky(ctx, model);
   return model;
@@ -146,17 +172,28 @@ async function addSky(ctx, model) {
     const w = await attempt(() => ctx.weather.get(d.anchor.lat, d.anchor.lng, d.date), null);
     if (!w || typeof w !== 'object' || w.error) continue;
     const hourly = Array.isArray(w.hourly) ? w.hourly : [];
-    const at = (minutes) => {
-      if (minutes === null || minutes === undefined) return null;
-      const h = ((Math.floor(minutes / 60) % 24) + 24) % 24;
+    // The forecast's hourly index is the LOCATION's own local hour (Open-Meteo,
+    // timezone=auto), not the trip's pinned zone. The result carries the location's
+    // sunrise/sunset as local "HH:MM", which is exactly the index to read; fall back
+    // to the longitude-estimated zone when a host answer lacks them.
+    const localHour = (weatherClock, eventKey) => {
+      const m = sun.parseClock(weatherClock);
+      if (m !== null) return Math.floor(m / 60);
+      const iso = d.sun.iso[eventKey];
+      if (!iso) return null;
+      const est = sun.zoneFromLongitude(d.anchor.lng);
+      return Math.floor(((sun.localMinutes(Date.parse(iso), d.date, est) % 1440) + 1440) % 1440 / 60);
+    };
+    const at = (h) => {
+      if (h === null) return null;
       const row = hourly.find((x) => Number(x.hour) === h);
       return row ? { main: String(row.main || ''), precipitation: Number(row.precipitation_probability ?? row.precipitation ?? 0) } : null;
     };
     d.sky = {
       summary: typeof w.main === 'string' ? w.main : null,
       description: typeof w.description === 'string' ? w.description : null,
-      sunrise: at(d.sun.minutes.sunrise),
-      sunset: at(d.sun.minutes.sunset),
+      sunrise: d.sun.polar ? null : at(localHour(w.sunrise, 'sunrise')),
+      sunset: d.sun.polar ? null : at(localHour(w.sunset, 'sunset')),
       precipitationMax: Number.isFinite(Number(w.precipitation_probability_max)) ? Number(w.precipitation_probability_max) : null,
     };
   }
@@ -203,6 +240,12 @@ async function setZone(ctx, { tripId, zone, userId }) {
 
 // ─── text for host-rendered surfaces (emoji-free, length-capped by the host) ─
 
+function fmtOffset(min) {
+  const sign = min < 0 ? '-' : '+';
+  const a = Math.abs(min);
+  return `${sign}${Math.floor(a / 60)}${a % 60 ? ':' + String(a % 60).padStart(2, '0') : ''}`;
+}
+
 function dayLabel(d) {
   return `Day ${d.number}` + (d.date ? ` (${d.date})` : '');
 }
@@ -211,12 +254,14 @@ function morningLine(d) {
   const s = d.sun;
   if (s.polar === 'day') return 'Midnight sun: the sun never sets today';
   if (s.polar === 'night') return s.times.civilDawn ? `Polar night: civil twilight ${s.times.civilDawn} to ${s.times.civilDusk}` : 'Polar night: no daylight today';
+  if (!s.times.goldenDawnEnd) return `Sunrise ${s.times.sunrise}, low sun all day: golden light until sunset`;
   return `Sunrise ${s.times.sunrise}, golden hour until ${s.times.goldenDawnEnd}`;
 }
 
 function eveningLine(d) {
   const s = d.sun;
   if (s.polar) return null;
+  if (!s.times.goldenDuskStart) return `Sunset ${s.times.sunset}`;
   return `Golden hour from ${s.times.goldenDuskStart}, sunset ${s.times.sunset}`;
 }
 
@@ -228,7 +273,8 @@ function scheduleRows(model) {
   for (const d of lit) {
     const s = d.sun;
     if (compact) {
-      const label = s.polar ? morningLine(d) : `Sun ${s.times.sunrise} to ${s.times.sunset}, golden ${s.times.blueDawnEnd}-${s.times.goldenDawnEnd} and ${s.times.goldenDuskStart}-${s.times.blueDuskStart}`;
+      const golden = [range(s.times.blueDawnEnd, s.times.goldenDawnEnd), range(s.times.goldenDuskStart, s.times.blueDuskStart)].filter(Boolean).join(' and ');
+      const label = s.polar ? morningLine(d) : `Sun ${s.times.sunrise} to ${s.times.sunset}` + (golden ? `, golden ${golden}` : ', golden light all day');
       rows.push({ id: `sun-${d.id}`, dayId: d.id, position: 'start', label, tone: d.shoot.on ? 'warn' : 'default' });
       continue;
     }
@@ -242,6 +288,10 @@ function scheduleRows(model) {
 function warningsFor(model) {
   const out = [];
   for (const d of model.days) {
+    if (d.zoneMismatch) {
+      const z = d.zoneMismatch;
+      out.push({ level: 'warning', message: `${dayLabel(d)} is at ${d.anchor.name} (about UTC${fmtOffset(z.estimatedOffset)}), but the trip's pinned zone ${z.pinned} is UTC${fmtOffset(z.pinnedOffset)}: Sundial shows its times in ${z.pinned}`, dayId: d.id });
+    }
     if (d.shoot.on && !d.sun) {
       out.push({ level: 'warning', message: `${dayLabel(d)} is marked as a shoot day but has no located stop or stay, so its sun times are unknown`, dayId: d.id });
       continue;
@@ -267,7 +317,7 @@ function pdfSections(model) {
     if (!s) return [String(d.number), d.date || '', d.anchor ? d.anchor.name : 'no location', '', '', '', '', ''];
     if (s.polar === 'day') return [String(d.number), d.date || '', d.anchor.name, 'midnight sun', '', '', '', '24h 00m'];
     if (s.polar === 'night') return [String(d.number), d.date || '', d.anchor.name, 'polar night', '', '', '', '0h 00m'];
-    return [String(d.number), d.date || '', d.anchor.name, s.times.sunrise, `${s.times.blueDawnEnd}-${s.times.goldenDawnEnd}`, `${s.times.goldenDuskStart}-${s.times.blueDuskStart}`, s.times.sunset, s.dayLength];
+    return [String(d.number), d.date || '', d.anchor.name, s.times.sunrise, range(s.times.blueDawnEnd, s.times.goldenDawnEnd) || 'all day', range(s.times.goldenDuskStart, s.times.blueDuskStart) || 'all day', s.times.sunset, s.dayLength];
   });
   const sections = [{
     title: 'Sun and light',
@@ -292,19 +342,9 @@ function compactDay(d) {
     date: d.date,
     where: d.anchor ? { name: d.anchor.name, lat: d.anchor.lat, lng: d.anchor.lng, source: d.anchor.source } : null,
     zone: d.zone,
-    shootDay: d.shoot.on ? { note: d.shoot.note } : false,
-    sun: d.sun
-      ? {
-          polar: d.sun.polar,
-          sunrise: d.sun.times.sunrise,
-          sunset: d.sun.times.sunset,
-          goldenHourMorning: d.sun.polar ? null : `${d.sun.times.blueDawnEnd}-${d.sun.times.goldenDawnEnd}`,
-          goldenHourEvening: d.sun.polar ? null : `${d.sun.times.goldenDuskStart}-${d.sun.times.blueDuskStart}`,
-          blueHourMorning: d.sun.polar ? null : `${d.sun.times.civilDawn}-${d.sun.times.blueDawnEnd}`,
-          blueHourEvening: d.sun.polar ? null : `${d.sun.times.blueDuskStart}-${d.sun.times.civilDusk}`,
-          dayLength: d.sun.dayLength,
-        }
-      : { unavailable: d.reason },
+    zoneMismatch: d.zoneMismatch,
+    shootDay: { on: d.shoot.on, note: d.shoot.note },
+    sun: d.sun ? sunSummary(d.sun.times, d.sun.polar, d.sun.dayLength) : { unavailable: d.reason },
   };
 }
 
@@ -400,10 +440,11 @@ module.exports = definePlugin({
         const t = (k) => sun.formatTime(s.events[k], s.zone, clock);
         if (s.polar === 'day') return [{ label: 'Sun', value: `Midnight sun on ${p.date}` }];
         if (s.polar === 'night') return [{ label: 'Sun', value: `Polar night on ${p.date}` }];
+        const both = (a, b, c, e) => [range(t(a), t(b)), range(t(c), t(e))].filter(Boolean).join(' and ').replace(/-/g, ' to ');
         return [
           { label: 'Sunrise', value: `${t('sunrise')} (${p.date})` },
-          { label: 'Golden hour', value: `${t('blueDawnEnd')} to ${t('goldenDawnEnd')} and ${t('goldenDuskStart')} to ${t('blueDuskStart')}` },
-          { label: 'Blue hour', value: `${t('civilDawn')} to ${t('blueDawnEnd')} and ${t('blueDuskStart')} to ${t('civilDusk')}` },
+          { label: 'Golden hour', value: both('blueDawnEnd', 'goldenDawnEnd', 'goldenDuskStart', 'blueDuskStart') || 'all day (low sun)' },
+          { label: 'Blue hour', value: both('civilDawn', 'blueDawnEnd', 'blueDuskStart', 'civilDusk') || 'none' },
           { label: 'Sunset', value: t('sunset') },
         ];
       },
@@ -452,8 +493,10 @@ module.exports = definePlugin({
         const a = args && typeof args === 'object' ? args : {};
         if (name === 'sun_times') {
           const tripId = intOf(a.tripId);
+          const zoneArg = typeof a.zone === 'string' && a.zone.trim() ? a.zone.trim() : null;
+          if (zoneArg && !sun.isValidZone(zoneArg)) throw new Error(`unknown time zone "${zoneArg}"`);
           if (tripId) {
-            const model = await loadTrip(ctx, tripId, { index: false });
+            const model = await loadTrip(ctx, tripId, { index: false, zone: zoneArg });
             if (!model) throw new Error('trip not found');
             const dayId = intOf(a.dayId);
             if (dayId) {
@@ -467,17 +510,12 @@ module.exports = definePlugin({
           const lng = Number(a.lng);
           const date = typeof a.date === 'string' ? a.date : isoToday();
           if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('pass tripId, or date with lat and lng');
-          const zone = typeof a.zone === 'string' && a.zone ? a.zone : sun.zoneFromLongitude(lng);
+          const zone = zoneArg || sun.zoneFromLongitude(lng);
           const { goldenAltitude, clock } = await userSettings(ctx);
           const s = sun.sunTimes({ date, lat, lng, zone, goldenAltitude });
-          const t = (k) => sun.formatTime(s.events[k], zone, clock);
-          return {
-            date, zone, polar: s.polar, dayLength: sun.formatDuration(s.dayLengthMinutes),
-            astronomicalDawn: t('astroDawn'), blueHourMorning: `${t('civilDawn')}-${t('blueDawnEnd')}`, sunrise: t('sunrise'),
-            goldenHourMorning: `${t('blueDawnEnd')}-${t('goldenDawnEnd')}`, solarNoon: t('noon'),
-            goldenHourEvening: `${t('goldenDuskStart')}-${t('blueDuskStart')}`, sunset: t('sunset'),
-            blueHourEvening: `${t('blueDuskStart')}-${t('civilDusk')}`, astronomicalDusk: t('astroDusk'),
-          };
+          const times = {};
+          for (const k of Object.keys(s.events)) times[k] = sun.formatTime(s.events[k], zone, clock);
+          return { date, zone, zoneSource: zoneArg ? 'request' : 'auto', ...sunSummary(times, s.polar, sun.formatDuration(s.dayLengthMinutes)) };
         }
         if (name === 'list_shoot_days') {
           const tripId = intOf(a.tripId);
@@ -539,4 +577,4 @@ module.exports = definePlugin({
 });
 
 // Exposed for tests; the host reads only the definition above.
-module.exports.__internals = { loadTrip, setShootDay, setZone, scheduleRows, warningsFor, pdfSections, compactDay, lightAt };
+module.exports.__internals = { loadTrip, setShootDay, setZone, scheduleRows, warningsFor, pdfSections, compactDay, lightAt, range, sunSummary };
