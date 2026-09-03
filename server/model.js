@@ -170,23 +170,41 @@ function buildTripModel(input) {
     };
   });
 
+  const zones = [...new Set(out.filter((d) => d.zone).map((d) => d.zone))];
+  const methods = [...new Set(out.filter((d) => d.zoneMethod).map((d) => d.zoneMethod))];
   return {
     trip: { id: trip.id, title: trip.title || null, start: trip.start_date || null, end: trip.end_date || null },
-    zone: { name: userZone, source: zoneSource },
+    // `name` is the pin (null = nothing pinned); `resolved` is the one zone every day
+    // landed on, or null when a multi-zone trip's days disagree — see `zones`.
+    zone: { name: userZone, source: zoneSource, resolved: zones.length === 1 ? zones[0] : null, method: methods.length === 1 ? methods[0] : null, zones },
     settings: { goldenAltitude: golden, clock },
     days: out,
     summary: summarize(out),
   };
 }
 
-/** Wall-clock strings + local-minute offsets for the UI bar, from a raw engine result. */
-function present(solar, clock) {
+/**
+ * Wall-clock strings + local-minute offsets from a raw engine result. A time that
+ * falls on another local date (a Tokyo sunset read on a Zurich clock) carries a
+ * day-rollover suffix, "01:28+1" / "22:15-1", so it is never mistaken for the same
+ * day. `minutes` stays unbounded for the same reason.
+ */
+function presentTimes(solar, clock) {
   const times = {};
   const minutes = {};
   for (const k of EVENT_KEYS) {
-    times[k] = sun.formatTime(solar.events[k], solar.zone, clock);
-    minutes[k] = solar.events[k] === null ? null : Math.round(sun.localMinutes(solar.events[k], solar.date, solar.zone));
+    const at = solar.events[k];
+    if (at === null) { times[k] = null; minutes[k] = null; continue; }
+    const m = Math.round(sun.localMinutes(at, solar.date, solar.zone));
+    const shift = Math.floor(m / 1440);
+    minutes[k] = m;
+    times[k] = sun.formatTime(at, solar.zone, clock) + (shift ? (shift > 0 ? '+' : '') + shift : '');
   }
+  return { times, minutes };
+}
+
+function present(solar, clock) {
+  const { times, minutes } = presentTimes(solar, clock);
   return {
     zone: solar.zone,
     offsetMinutes: solar.offsetMinutes,
@@ -257,4 +275,4 @@ function lightAt(minutes, s) {
   return kind === 'golden' || kind === 'blue' || kind === 'day' ? kind : 'dark';
 }
 
-module.exports = { buildTripModel, resolveAnchors, dateFor, lightAt, segments, present, EVENT_KEYS };
+module.exports = { buildTripModel, resolveAnchors, dateFor, lightAt, segments, present, presentTimes, EVENT_KEYS };

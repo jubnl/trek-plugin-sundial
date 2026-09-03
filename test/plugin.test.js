@@ -351,9 +351,10 @@ test('shootDay is always an object, and both sun_times modes share one field ord
 test('zone is honoured in trip mode (request-scoped) and flags days far from a pinned zone', async () => {
   const drv = host().run(plugin);
   const r = await drv.hook('mcpToolProvider', 'callTool', { name: 'sun_times', args: { tripId: 1, zone: 'Europe/Zurich' } });
-  assert.deepEqual(r.zone, { name: 'Europe/Zurich', source: 'request' });
+  assert.deepEqual(r.zone, { name: 'Europe/Zurich', source: 'request', resolved: 'Europe/Zurich', method: 'request', zones: ['Europe/Zurich'] });
   assert.equal(r.days[0].zone, 'Europe/Zurich');
-  assert.match(r.days[0].sun.sunrise, /^22:1\d$/, 'Tokyo sunrise on Zurich clocks is the previous evening');
+  assert.match(r.days[0].sun.sunrise, /^22:1\d-1$/, 'Tokyo sunrise on Zurich clocks is the previous evening, and says so');
+  assert.match(r.days[0].sun.sunset, /^11:0\d$/, 'same local date: no suffix');
   assert.equal(r.summary.zoneMismatches, 8);
   assert.deepEqual(r.days[0].zoneMismatch, { pinned: 'Europe/Zurich', pinnedOffset: 120, estimatedZone: 'Asia/Tokyo', estimatedOffset: 540 });
   await assert.rejects(drv.hook('mcpToolProvider', 'callTool', { name: 'sun_times', args: { tripId: 1, zone: 'Mars/Olympus' } }), /unknown time zone/);
@@ -369,6 +370,24 @@ test('zone is honoured in trip mode (request-scoped) and flags days far from a p
   // never at the pinned zone's hour (11:xx → Clouds).
   const zurich = await tripModel(host({ queryResults: { [PREFS_SQL]: [{ zone: 'Europe/Zurich' }] } }));
   assert.match(zurich.body.days[0].sun.times.sunset, /^11:0\d$/);
+  assert.match(zurich.body.days[0].sun.times.sunrise, /-1$/);
   assert.equal(zurich.body.days[0].sky.sunset.main, 'Clear');
   assert.equal(zurich.body.days[0].sky.sunrise.main, 'Clear');
+});
+
+test('the zone block reports what the days resolved to', async () => {
+  const auto = await tripModel(host());
+  assert.deepEqual(auto.body.zone, { name: null, source: 'auto', resolved: 'Asia/Tokyo', method: 'region', zones: ['Asia/Tokyo'] });
+  const pinned = await tripModel(host({ queryResults: { [PREFS_SQL]: [{ zone: 'Europe/Zurich' }] } }));
+  assert.equal(pinned.body.zone.name, 'Europe/Zurich');
+  assert.equal(pinned.body.zone.resolved, 'Europe/Zurich');
+  assert.equal(pinned.body.zone.method, 'user');
+});
+
+test('a Lyon day on a Tokyo clock wraps past midnight with an explicit +1', async () => {
+  const drv = host().run(plugin);
+  const r = await drv.hook('mcpToolProvider', 'callTool', { name: 'sun_times', args: { date: '2026-11-03', lat: 45.764, lng: 4.8357, zone: 'Asia/Tokyo' } });
+  assert.match(r.sunset, /^01:\d\d\+1$/);
+  assert.match(r.goldenHourEvening, /^00:\d\d\+1-01:\d\d\+1$/);
+  assert.match(r.sunrise, /^15:\d\d$/);
 });

@@ -95,6 +95,10 @@ passed in either mode.
 
 ## Changelog
 
+- **1.3.0**: the trip's zone block carries `resolved` (the one zone every day landed on, or
+  null on a multi-zone trip), `method` and `zones`; a time that falls on another local date
+  is written with a rollover suffix (`01:28+1`, `22:15-1`) in every surface.
+
 - **1.2.0**: the automatic zone comes from a region table (about 130 boxes to real IANA
   zones) before the longitude band, so Lyon is CET rather than UTC and Honolulu is UTC-10
   rather than UTC-11; `zoneMethod` (`region` / `longitude` / `user` / `request`) says how a

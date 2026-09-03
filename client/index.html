@@ -236,7 +236,7 @@
     var first = m.days.find(function (d) { return d.sun; });
     $('zone-est').textContent = m.zone.name
       ? offsetLabel(first ? first.sun.offsetMinutes : null) + (m.summary.zoneMismatches ? ' · ' + m.summary.zoneMismatches + (m.summary.zoneMismatches === 1 ? ' day lies' : ' days lie') + ' in another zone' : '')
-      : (first ? 'estimated ' + first.zone + ' (' + offsetLabel(first.sun.offsetMinutes) + ')' + (first.zoneMethod === 'longitude' ? ' · from longitude only, pin to be sure' : '') : '');
+      : (first ? 'estimated ' + (m.zone.resolved || m.zone.zones.join(', ')) + (m.zone.resolved ? ' (' + offsetLabel(first.sun.offsetMinutes) + ')' : '') + (m.zone.method === 'longitude' ? ' · from longitude only, pin to be sure' : '') : '');
     $('zonebox').hidden = false;
   }
 

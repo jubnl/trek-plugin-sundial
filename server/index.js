@@ -11,7 +11,7 @@
 
 const { definePlugin } = require('trek-plugin-sdk');
 const sun = require('./sun.js');
-const { buildTripModel, lightAt } = require('./model.js');
+const { buildTripModel, lightAt, presentTimes } = require('./model.js');
 const { zoneFromLocation } = require('./zones.js');
 
 /** "a-b" only when both ends exist; null otherwise (never "null-null"). */
@@ -439,7 +439,7 @@ module.exports = definePlugin({
         } catch {
           return [];
         }
-        const t = (k) => sun.formatTime(s.events[k], s.zone, clock);
+        const t = (k) => presentTimes(s, clock).times[k];
         if (s.polar === 'day') return [{ label: 'Sun', value: `Midnight sun on ${p.date}` }];
         if (s.polar === 'night') return [{ label: 'Sun', value: `Polar night on ${p.date}` }];
         const both = (a, b, c, e) => [range(t(a), t(b)), range(t(c), t(e))].filter(Boolean).join(' and ').replace(/-/g, ' to ');
@@ -516,8 +516,7 @@ module.exports = definePlugin({
           const zone = zoneArg || estimate.zone;
           const { goldenAltitude, clock } = await userSettings(ctx);
           const s = sun.sunTimes({ date, lat, lng, zone, goldenAltitude });
-          const times = {};
-          for (const k of Object.keys(s.events)) times[k] = sun.formatTime(s.events[k], zone, clock);
+          const { times } = presentTimes(s, clock);
           return { date, zone, zoneSource: zoneArg ? 'request' : 'auto', zoneMethod: zoneArg ? 'request' : estimate.method, ...sunSummary(times, s.polar, sun.formatDuration(s.dayLengthMinutes)) };
         }
         if (name === 'list_shoot_days') {
