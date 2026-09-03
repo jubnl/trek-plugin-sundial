@@ -72,7 +72,8 @@ test('GET /trip builds the model: anchors, zone, sun times, sky, summary', async
   assert.equal(body.days[4].anchor.name, 'Ryokan Gion', 'a free day sleeps at the ryokan');
   assert.equal(body.days[7].anchor.name, 'Lake Kawaguchi', 'the last day carries the previous location');
   assert.equal(body.zone.source, 'auto');
-  assert.equal(body.days[0].zone, 'Etc/GMT-9');
+  assert.equal(body.days[0].zone, 'Asia/Tokyo');
+  assert.equal(body.days[0].zoneMethod, 'region');
   assert.equal(body.days[0].sun.times.sunrise, '05:15');
   assert.equal(body.days[0].sun.times.sunset, '18:03');
   assert.equal(body.summary.computed, 8);
@@ -342,7 +343,7 @@ test('shootDay is always an object, and both sun_times modes share one field ord
   assert.deepEqual(all.days[0].shootDay, { on: false, note: null });
   assert.deepEqual(all.days[3].shootDay, { on: true, note: 'x' });
   const spot = await drv.hook('mcpToolProvider', 'callTool', { name: 'sun_times', args: { date: '2026-09-05', lat: 35.7148, lng: 139.7967, zone: 'Asia/Tokyo' } });
-  const spotKeys = Object.keys(spot).filter((k) => !['date', 'zone', 'zoneSource'].includes(k));
+  const spotKeys = Object.keys(spot).filter((k) => !['date', 'zone', 'zoneSource', 'zoneMethod'].includes(k));
   assert.deepEqual(Object.keys(all.days[0].sun), spotKeys);
   assert.equal(all.days[0].sun.sunrise, spot.sunrise);
 });
@@ -354,7 +355,7 @@ test('zone is honoured in trip mode (request-scoped) and flags days far from a p
   assert.equal(r.days[0].zone, 'Europe/Zurich');
   assert.match(r.days[0].sun.sunrise, /^22:1\d$/, 'Tokyo sunrise on Zurich clocks is the previous evening');
   assert.equal(r.summary.zoneMismatches, 8);
-  assert.deepEqual(r.days[0].zoneMismatch, { pinned: 'Europe/Zurich', pinnedOffset: 120, estimatedZone: 'Etc/GMT-9', estimatedOffset: 540 });
+  assert.deepEqual(r.days[0].zoneMismatch, { pinned: 'Europe/Zurich', pinnedOffset: 120, estimatedZone: 'Asia/Tokyo', estimatedOffset: 540 });
   await assert.rejects(drv.hook('mcpToolProvider', 'callTool', { name: 'sun_times', args: { tripId: 1, zone: 'Mars/Olympus' } }), /unknown time zone/);
 
   const pinned = host({ queryResults: { [PREFS_SQL]: [{ zone: 'Europe/Zurich' }] } }).run(plugin);

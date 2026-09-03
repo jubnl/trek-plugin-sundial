@@ -4,6 +4,7 @@
 'use strict';
 
 const sun = require('./sun.js');
+const { zoneFromLocation } = require('./zones.js');
 
 const EVENT_KEYS = [
   'astroDawn', 'nauticalDawn', 'civilDawn', 'blueDawnEnd', 'sunrise', 'goldenDawnEnd', 'noon',
@@ -127,8 +128,10 @@ function buildTripModel(input) {
   const out = days.map((day, i) => {
     const anchor = anchors[i];
     const date = dateFor(day, trip);
-    const zoneAuto = anchor ? sun.zoneFromLongitude(anchor.lng) : null;
+    const estimate = anchor ? zoneFromLocation(anchor.lat, anchor.lng) : null;
+    const zoneAuto = estimate ? estimate.zone : null;
     const zone = userZone || zoneAuto;
+    const zoneMethod = userZone ? zoneSource : estimate ? estimate.method : null;
     let solar = null;
     let reason = null;
     if (!date) reason = 'no-date';
@@ -146,7 +149,7 @@ function buildTripModel(input) {
     // say so rather than quietly reporting a sunrise at 22:15.
     let zoneMismatch = null;
     if (solar && userZone && anchor) {
-      const estimated = Math.round(anchor.lng / 15) * 60;
+      const estimated = sun.zoneOffsetMinutes(zoneAuto, solar.noon);
       if (Math.abs(solar.offsetMinutes - estimated) >= 90) {
         zoneMismatch = { pinned: userZone, pinnedOffset: solar.offsetMinutes, estimatedZone: zoneAuto, estimatedOffset: estimated };
       }
@@ -158,6 +161,7 @@ function buildTripModel(input) {
       title: day.title || null,
       anchor,
       zone,
+      zoneMethod,
       zoneMismatch,
       stops: stopsOf(day),
       sun: solar ? present(solar, clock) : null,

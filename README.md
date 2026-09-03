@@ -33,8 +33,11 @@ the trip PDF. Three MCP tools let an assistant connected to TREK ask for sun tim
 manage shoot days on your behalf.
 
 Times are shown in the trip's time zone. Until you pin one in the tab, Sundial estimates a
-zone from each day's longitude, which can be an hour off in places that keep an unusual
-zone, so pick the real one from the list once; it is remembered for the trip. A pinned zone
+zone from each day's location: a built-in table of regions maps the places people travel
+to onto real IANA zones (so France is CET although it sits in the UTC band, China keeps one
+zone, India is on the half hour, and daylight saving comes out right), and only a spot the
+table does not know falls back to the longitude band. The tab says which it used. Pin the
+real zone from the list once to be sure; it is remembered for the trip. A pinned zone
 is one zone for the whole trip: when a day's location sits more than ninety minutes away
 from it (Zurich pinned, a day in Tokyo), that day is flagged in the tab and in the planner
 warnings rather than quietly showing Zurich's clock. Near the poles, any phase the sun never
@@ -91,6 +94,11 @@ string or a `"start-end"` range, and `null` when the sun never reaches it; `zone
 passed in either mode.
 
 ## Changelog
+
+- **1.2.0**: the automatic zone comes from a region table (about 130 boxes to real IANA
+  zones) before the longitude band, so Lyon is CET rather than UTC and Honolulu is UTC-10
+  rather than UTC-11; `zoneMethod` (`region` / `longitude` / `user` / `request`) says how a
+  zone was chosen; the forecast sky's fallback hour uses the same estimate.
 
 - **1.1.0**: polar and high-latitude answers never contain `null-null` ranges; `shootDay` is
   always `{ on, note }`; `zone` is honoured in trip mode; both `sun_times` modes share one

@@ -12,6 +12,7 @@
 const { definePlugin } = require('trek-plugin-sdk');
 const sun = require('./sun.js');
 const { buildTripModel, lightAt } = require('./model.js');
+const { zoneFromLocation } = require('./zones.js');
 
 /** "a-b" only when both ends exist; null otherwise (never "null-null"). */
 function range(a, b) {
@@ -181,7 +182,7 @@ async function addSky(ctx, model) {
       if (m !== null) return Math.floor(m / 60);
       const iso = d.sun.iso[eventKey];
       if (!iso) return null;
-      const est = sun.zoneFromLongitude(d.anchor.lng);
+      const est = zoneFromLocation(d.anchor.lat, d.anchor.lng).zone;
       return Math.floor(((sun.localMinutes(Date.parse(iso), d.date, est) % 1440) + 1440) % 1440 / 60);
     };
     const at = (h) => {
@@ -342,6 +343,7 @@ function compactDay(d) {
     date: d.date,
     where: d.anchor ? { name: d.anchor.name, lat: d.anchor.lat, lng: d.anchor.lng, source: d.anchor.source } : null,
     zone: d.zone,
+    zoneMethod: d.zoneMethod,
     zoneMismatch: d.zoneMismatch,
     shootDay: { on: d.shoot.on, note: d.shoot.note },
     sun: d.sun ? sunSummary(d.sun.times, d.sun.polar, d.sun.dayLength) : { unavailable: d.reason },
@@ -510,12 +512,13 @@ module.exports = definePlugin({
           const lng = Number(a.lng);
           const date = typeof a.date === 'string' ? a.date : isoToday();
           if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('pass tripId, or date with lat and lng');
-          const zone = zoneArg || sun.zoneFromLongitude(lng);
+          const estimate = zoneFromLocation(lat, lng);
+          const zone = zoneArg || estimate.zone;
           const { goldenAltitude, clock } = await userSettings(ctx);
           const s = sun.sunTimes({ date, lat, lng, zone, goldenAltitude });
           const times = {};
           for (const k of Object.keys(s.events)) times[k] = sun.formatTime(s.events[k], zone, clock);
-          return { date, zone, zoneSource: zoneArg ? 'request' : 'auto', ...sunSummary(times, s.polar, sun.formatDuration(s.dayLengthMinutes)) };
+          return { date, zone, zoneSource: zoneArg ? 'request' : 'auto', zoneMethod: zoneArg ? 'request' : estimate.method, ...sunSummary(times, s.polar, sun.formatDuration(s.dayLengthMinutes)) };
         }
         if (name === 'list_shoot_days') {
           const tripId = intOf(a.tripId);
